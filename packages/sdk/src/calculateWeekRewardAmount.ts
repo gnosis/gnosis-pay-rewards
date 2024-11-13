@@ -77,10 +77,16 @@ export function calculateWeekRewardAmount({
     throw new Error('fourWeeksUsdVolumeThreshold must be greater than 0');
   }
 
-  // safeCurrency volume threshold - four-week volume + 1-week
-  const netVolume = fourWeeksUsdVolumeThreshold - fourWeeksUsdVolume + weekUsdVolume;
-  // If the month-to-date USD volume is greater than the threshold, the user is eligible for the OG NFT holder reward
-  if (netVolume >= fourWeeksUsdVolumeThreshold) {
+  // 1-week volume is above the threshold, no rewards for this week
+  if (weekUsdVolume > fourWeeksUsdVolumeThreshold) {
+    return 0;
+  }
+
+  // The past 4 weeks volume is above the threshold, and the week's volume is greater than the threshold
+  if (
+    fourWeeksUsdVolume > fourWeeksUsdVolumeThreshold &&
+    fourWeeksUsdVolumeThreshold - weekUsdVolume > fourWeeksUsdVolumeThreshold
+  ) {
     return 0;
   }
 
