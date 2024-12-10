@@ -1,35 +1,22 @@
 import { gnosisPaySpendAddress, gnosisPaySpenderModuleAddress } from '@karpatkey/gnosis-pay-rewards-sdk';
-import { GnosisPayGetLogsParams } from './commons.js';
+import retry from 'async-retry';
+import { buildRetryOptions, GnosisPayGetLogsParams } from './commons.js';
 
-export async function getGnosisPaySpendLogs({
-  client,
-  fromBlock,
-  toBlock,
-  retries = 30,
-  verbose = false,
-}: GnosisPayGetLogsParams) {
-  try {
-    const logs = await client.getLogs({
-      fromBlock,
-      toBlock,
-      event: gnosisPaySpendEventAbiItem,
-      args: {
-        receiver: gnosisPaySpendAddress,
-      },
-      address: gnosisPaySpenderModuleAddress,
-      strict: true,
-    });
-    return logs;
-  } catch (error) {
-    if (verbose) {
-      console.error(error);
-    }
-    if (retries > 0) {
-      return getGnosisPaySpendLogs({ client, fromBlock, toBlock, retries: retries - 1 });
-    }
-
-    throw error;
-  }
+export async function getGnosisPaySpendLogs({ client, fromBlock, toBlock, retries, verbose }: GnosisPayGetLogsParams) {
+  return retry(
+    () =>
+      client.getLogs({
+        fromBlock,
+        toBlock,
+        event: gnosisPaySpendEventAbiItem,
+        args: {
+          receiver: gnosisPaySpendAddress,
+        },
+        address: gnosisPaySpenderModuleAddress,
+        strict: false,
+      }),
+    buildRetryOptions({ name: 'getGnosisPaySpendLogs', verbose, retries }),
+  );
 }
 
 export const gnosisPaySpendEventAbiItem = {

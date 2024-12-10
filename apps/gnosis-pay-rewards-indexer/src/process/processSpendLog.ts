@@ -25,7 +25,7 @@ import {
 import { Model } from 'mongoose';
 import dayjs from 'dayjs';
 import dayjsUtcPlugin from 'dayjs/plugin/utc.js';
-import { formatUnits, Address, isAddressEqual } from 'viem';
+import { formatUnits, Address, isAddressEqual, isAddress } from 'viem';
 import { getGnosisPaySpendLogs } from '../gp/getGnosisPaySpendLogs.js';
 import { getBlockByNumber } from './actions.js';
 import { getGnosisPaySafeAddressFromModule } from '../gp/getGnosisPaySafeAddressFromModule.js';
@@ -34,6 +34,7 @@ import { hasGnosisPayOgNft } from '../gp/hasGnosisPayOgNft.js';
 import { getGnosisPaySafeOwners as getGnosisPaySafeOwnersCore } from '../gp/getGnosisPaySafeOwners.js';
 
 import { MongooseConfiguredModels, ProcessLogFnDataType, ProcessLogFunctionParams } from './types.js';
+import { LogAlreadyProcessedError } from './errors.js';
 
 dayjs.extend(dayjsUtcPlugin);
 
@@ -48,9 +49,19 @@ export async function processSpendLog({
     await validateLogIsNotAlreadyProcessed(mongooseModels.gnosisPayTransactionModel, log.transactionHash);
 
     const { blockNumber, transactionHash } = log;
-    const { account: rolesModuleAddress, amount: spendAmountRaw, asset: spentTokenAddress } = log.args;
+    const spendAmountRaw = log.args.amount as bigint;
+    const rolesModuleAddress = log.args.account?.toLowerCase() as Address;
+
+    if (log.args.account === undefined) {
+      throw new Error('Roles module address is undefined');
+    }
+
     // Throw an error if the token is not registered as GP token
-    const spentToken = validateToken(spentTokenAddress);
+    const spentToken = validateToken(log.args.asset as Address);
+
+    if (!isAddress(rolesModuleAddress)) {
+      throw new Error(`Invalid roles module address: ${rolesModuleAddress}`);
+    }
 
     const block = await getBlockByNumber({
       blockNumber: log.blockNumber,
@@ -103,7 +114,7 @@ export async function processSpendLog({
         _id: transactionHash,
         amount,
         amountRaw: spendAmountRaw.toString(),
-        amountToken: spentTokenAddress,
+        amountToken: spentToken.address,
         amountUsd,
         blockNumber: Number(blockNumber),
         blockTimestamp: Number(block.timestamp),
@@ -151,11 +162,19 @@ export async function processRefundLog({
     await validateLogIsNotAlreadyProcessed(mongooseModels.gnosisPayTransactionModel, log.transactionHash);
 
     const { blockNumber, transactionHash } = log;
-    const amountTokenAddress = log.address;
-    const { to: safeAddress, value: amountRaw } = log.args;
+    const safeAddress = log.args.to?.toLowerCase() as Address;
+
+    if (!isAddress(safeAddress)) {
+      throw new Error(`Invalid to address: ${safeAddress}`);
+    }
 
     // Throw an error if the token is not registered as GP token
-    const spentToken = validateToken(amountTokenAddress);
+    const amountToken = validateToken(log.address as Address);
+    const amountRaw = log.args.value as bigint;
+
+    if (amountRaw === undefined) {
+      throw new Error('Amount is undefined');
+    }
 
     const block = await getBlockByNumber({
       blockNumber,
@@ -183,7 +202,7 @@ export async function processRefundLog({
     const safeTokenUsdPrice = await getTokenUsdPrice({
       blockNumber,
       client,
-      token: spentToken.address,
+      token: amountToken.address,
     });
 
     const gnoUsdPrice = await getTokenUsdPrice({
@@ -193,7 +212,7 @@ export async function processRefundLog({
     });
 
     const weekId = toWeekId(block.timestamp);
-    const amount = Number(formatUnits(amountRaw, spentToken.decimals));
+    const amount = Number(formatUnits(amountRaw, amountToken.decimals));
     const amountUsd = safeTokenUsdPrice * amount;
     const gnoBalance = Number(formatUnits(gnosisPaySafeGnoTokenBalance, gnoToken.decimals));
 
@@ -202,7 +221,7 @@ export async function processRefundLog({
         _id: transactionHash,
         amount,
         amountRaw: amountRaw.toString(),
-        amountToken: amountTokenAddress,
+        amountToken: amountToken.address,
         amountUsd,
         blockNumber: Number(blockNumber),
         blockTimestamp: Number(block.timestamp),
@@ -247,9 +266,7 @@ async function validateLogIsNotAlreadyProcessed(
 ) {
   const savedLog = await gnosisPayTransactionModel.findOne({ _id: logId });
   if (savedLog !== null) {
-    throw new Error(`Log ${logId} already processed`, {
-      cause: 'LOG_ALREADY_PROCESSED',
-    });
+    throw new LogAlreadyProcessedError(`Log ${logId} already processed`);
   }
 }
 
@@ -399,7 +416,7 @@ async function saveToDatabase(
   const fourWeeksUsdVolume = fourWeekSnapshots.reduce((acc, curr) => acc + curr.netUsdVolume, 0);
 
   // Calculate the estimated reward for the week
-  const estimatedGnoReward = calculateWeekRewardAmount({
+  const rewardAmountResult = calculateWeekRewardAmount({
     fourWeeksUsdVolume,
     gnoBalance: weekRewardDocument.minGnoBalance,
     gnoUsdPrice,
@@ -411,7 +428,7 @@ async function saveToDatabase(
   });
 
   // Calculate the estimated reward for the week
-  weekRewardDocument.estimatedReward = estimatedGnoReward;
+  weekRewardDocument.estimatedReward = rewardAmountResult.rewardAmountUsd;
   await weekRewardDocument.save({ session: mongooseSession });
 
   // Create the safe address document

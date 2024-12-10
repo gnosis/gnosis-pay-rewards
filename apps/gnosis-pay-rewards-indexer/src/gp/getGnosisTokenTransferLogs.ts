@@ -1,30 +1,23 @@
 import { gnoToken } from '@karpatkey/gnosis-pay-rewards-sdk';
-import { erc20TransferEventAbiItem, GnosisPayGetLogsParams } from './commons.js';
+import retry from 'async-retry';
+import { buildRetryOptions, erc20TransferEventAbiItem, GnosisPayGetLogsParams } from './commons.js';
 
 export async function getGnosisTokenTransferLogs({
   client,
   fromBlock,
   toBlock,
-  retries = 30,
-  verbose = false,
+  retries,
+  verbose,
 }: GnosisPayGetLogsParams) {
-  try {
-    const logs = await client.getLogs({
-      fromBlock,
-      toBlock,
-      address: gnoToken.address,
-      event: erc20TransferEventAbiItem,
-      strict: true,
-    });
-    return logs;
-  } catch (error) {
-    if (verbose) {
-      console.error(error);
-    }
-    if (retries > 0) {
-      return getGnosisTokenTransferLogs({ client, fromBlock, toBlock, retries: retries - 1 });
-    }
-
-    throw error;
-  }
+  return retry(
+    () =>
+      client.getLogs({
+        fromBlock,
+        toBlock,
+        address: gnoToken.address,
+        event: erc20TransferEventAbiItem,
+        strict: false,
+      }),
+    buildRetryOptions({ name: 'getGnosisTokenTransferLogs', verbose, retries }),
+  );
 }

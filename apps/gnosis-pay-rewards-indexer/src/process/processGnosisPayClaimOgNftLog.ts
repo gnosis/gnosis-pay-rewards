@@ -1,5 +1,5 @@
 import { GnosisPaySafeAddressModelType } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
-import { isAddress } from 'viem';
+import { Address, isAddress } from 'viem';
 
 import { getGnosisPayClaimOgNftLogs } from '../gp/getGnosisPayClaimOgNftLogs.js';
 import { getGnosisPaySafeOwners } from '../gp/getGnosisPaySafeOwners.js';
@@ -23,11 +23,11 @@ export async function processGnosisPayClaimOgNftLog({
     const { gnosisPaySafeAddressModel } = mongooseModels;
 
     // The OF NFT is minted to the safe owner
-    const safeOwner = log.args.to;
+    const safeOwner = log.args.to?.toLowerCase() as Address;
 
     // to address must exist
     if (!isAddress(safeOwner)) {
-      throw new Error(`Invalid to address: ${log.args.to}`);
+      throw new Error(`Invalid to address: ${safeOwner}`);
     }
 
     const safesWithOwner = await gnosisPaySafeAddressModel.find({

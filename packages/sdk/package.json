@@ -1,7 +1,7 @@
 {
   "name": "@karpatkey/gnosis-pay-rewards-sdk",
   "private": false,
-  "version": "2.0.0-rc.0",
+  "version": "3.0.0-rc.0",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.esm.js",
@@ -64,7 +64,7 @@
     "ts-jest": "^29.1.0",
     "ts-node": "^10.9.1",
     "tslib": "^2.5.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.6.3"
   },
   "peerDependencies": {
     "socket.io": "^4.7.5",

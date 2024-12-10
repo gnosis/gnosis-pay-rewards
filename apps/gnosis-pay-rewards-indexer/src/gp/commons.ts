@@ -12,13 +12,42 @@ export type GnosisPayGetLogsParams = {
   verbose?: boolean;
 };
 
+/**
+ * Number of default retries for getLogs
+ */
+export const defaultRetries = 30;
+
+/**
+ * Builds a retry handler for getLogs
+ * @param name - The name of the function
+ * @param verbose - Whether to log the error
+ * @returns The retry handler
+ */
+export function buildRetryOptions({
+  retries = defaultRetries,
+  name,
+  verbose = false,
+}: {
+  retries?: number;
+  name: string;
+  verbose?: boolean;
+}) {
+  const onRetry = (error: Error, attempt: number) => {
+    if (verbose) {
+      console.log(`${name}: failed on attempt ${attempt}`, error);
+    }
+  };
+
+  return { retries, onRetry };
+}
+
 export const erc20TransferEventAbiItem = {
   name: 'Transfer',
   type: 'event',
   inputs: [
-    { indexed: false, internalType: 'address', name: 'from', type: 'address' },
-    { indexed: false, internalType: 'address', name: 'to', type: 'address' },
-    { indexed: false, internalType: 'uint256', name: 'value', type: 'uint256' },
+    { indexed: true, internalType: 'address', name: 'from', type: 'address' },
+    { indexed: true, internalType: 'address', name: 'to', type: 'address' },
+    { indexed: true, internalType: 'uint256', name: 'value', type: 'uint256' },
   ],
 } as const;
 

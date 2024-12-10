@@ -7,7 +7,6 @@ import {
   isValidWeekId,
 } from '@karpatkey/gnosis-pay-rewards-sdk';
 import {
-  createMongooseLogger,
   createWeekCashbackRewardDocumentId,
   createWeekRewardsSnapshotDocument,
   createGnosisPayRewardDistributionModel,
@@ -20,18 +19,18 @@ import {
   createGnosisPaySafeAddressModel,
   GnosisPaySafeAddressDocumentFieldsType_Unpopulated,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
-import { Response } from 'express';
+import { Express, Response } from 'express';
 import dayjs from 'dayjs';
 import dayjsUtc from 'dayjs/plugin/utc.js';
 import { Address, isAddress, PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';
+import { Logger } from 'winston';
 import { z, ZodError } from 'zod';
-
+// Core GP
 import { takeGnosisTokenBalanceSnapshot } from './process/processGnosisTokenTransferLog.js';
 import { getGnosisPaySafeOwners } from './gp/getGnosisPaySafeOwners.js';
 import { isGnosisPaySafeAddress } from './gp/isGnosisPaySafeAddress.js';
 import { hasGnosisPayOgNft } from './gp/hasGnosisPayOgNft.js';
-import { buildExpressApp } from './server.js';
 
 dayjs.extend(dayjsUtc);
 
@@ -41,7 +40,7 @@ export function addHttpRoutes({
   getIndexerState,
   client,
 }: {
-  expressApp: ReturnType<typeof buildExpressApp>;
+  expressApp: Express;
   mongooseModels: {
     gnosisTokenBalanceSnapshotModel: ReturnType<typeof createGnosisTokenBalanceSnapshotModel>;
     gnosisPaySafeAddressModel: ReturnType<typeof createGnosisPaySafeAddressModel>;
@@ -50,8 +49,8 @@ export function addHttpRoutes({
     gnosisPayRewardDistributionModel: ReturnType<typeof createGnosisPayRewardDistributionModel>;
     weekMetricsSnapshotModel: ReturnType<typeof createWeekMetricsSnapshotModel>;
   };
+  logger: Logger;
   client: PublicClient<Transport, typeof gnosis>;
-  logger: ReturnType<typeof createMongooseLogger>;
   getIndexerState: () => IndexerStateAtomType;
 }) {
   const {
@@ -334,6 +333,33 @@ export function addHttpRoutes({
     }
   });
 
+  expressApp.get<'/gnosis-balance-snapshots/:safeAddress'>(
+    '/gnosis-balance-snapshots/:safeAddress',
+    async (req, res) => {
+      try {
+        const safeAddress = addressSchema.parse(req.params.safeAddress);
+        const snapshots = await getGnosisBalanceSnapshots(gnosisTokenBalanceSnapshotModel, safeAddress);
+
+        return res.json({
+          data: snapshots,
+          status: 'ok',
+          statusCode: 200,
+        });
+      } catch (error) {
+        return returnServerError(res, error as Error);
+      }
+    },
+  );
+
+  // Handle all other routes
+  expressApp.all('*', (req, res) => {
+    return res.status(404).json({
+      error: 'Not found',
+      status: 'error',
+      statusCode: 404,
+    });
+  });
+
   return expressApp;
 }
 
@@ -508,4 +534,13 @@ async function getSafeAddressDistributions(
       safe: safeAddress.toLowerCase(),
     })
     .sort({ blockNumber: -1 });
+}
+
+async function getGnosisBalanceSnapshots(
+  model: ReturnType<typeof createGnosisTokenBalanceSnapshotModel>,
+  safeAddress: Address,
+) {
+  return model.find({
+    safe: safeAddress.toLowerCase(),
+  });
 }

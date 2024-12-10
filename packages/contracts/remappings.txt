@@ -1,6 +1,0 @@
-forge-std/=node_modules/forge-std/src/
-@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/
-@uniswap/=node_modules/@uniswap/
-@ensdomains/buffer/contracts/=node_modules/@ensdomains/buffer/contracts
-@chainlink/contracts=node_modules/@chainlink/contracts/src/
-@balancer-labs/v2-interfaces/=node_modules/@balancer-labs/v2-interfaces/

@@ -10,18 +10,22 @@ import {
   createGnosisPaySafeAddressModel,
   createGnosisPayTransactionModel,
   createGnosisTokenBalanceSnapshotModel,
-  createLoggerModel,
-  createMongooseLogger,
   createTokenModel,
   createWeekCashbackRewardModel,
   createWeekMetricsSnapshotModel,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
+import { getLogger } from './logger.js';
 
 async function main(resumeIndexing: boolean = RESUME_INDEXING) {
   try {
+    const logger = await getLogger();
+
+    logger.info('creating mongoose connection');
+
     const mongooseConnection = await createConnection(MONGODB_URI);
 
-    console.log('Connected to mongodb at', mongooseConnection.connection.host);
+    mongooseConnection.set('debug', true);
+    logger.info(`connected to mongodb at ${mongooseConnection.connection.host}`);
 
     const mongooseModels: StartIndexingParamsType['mongooseModels'] = {
       gnosisPaySafeAddressModel: createGnosisPaySafeAddressModel(mongooseConnection),
@@ -29,13 +33,10 @@ async function main(resumeIndexing: boolean = RESUME_INDEXING) {
       weekCashbackRewardModel: createWeekCashbackRewardModel(mongooseConnection),
       weekMetricsSnapshotModel: createWeekMetricsSnapshotModel(mongooseConnection),
       gnosisPayTokenModel: createTokenModel(mongooseConnection),
-      loggerModel: createLoggerModel(mongooseConnection),
       blockModel: createBlockModel(mongooseConnection),
       gnosisTokenBalanceSnapshotModel: createGnosisTokenBalanceSnapshotModel(mongooseConnection),
       gnosisPayRewardDistributionModel: createGnosisPayRewardDistributionModel(mongooseConnection),
     };
-
-    const logger = createMongooseLogger(mongooseModels.loggerModel);
 
     await startIndexing({
       client,

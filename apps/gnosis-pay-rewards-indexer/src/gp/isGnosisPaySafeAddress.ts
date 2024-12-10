@@ -32,7 +32,7 @@ export async function isGnosisPaySafeAddress({
 }> {
   // Priority 1: Check if the address is a Gnosis Safe address in the database
   const safeAddressEntity = await gnosisPaySafeAddressModel.exists({
-    address,
+    address: address.toLowerCase(),
   });
 
   if (safeAddressEntity !== null) {

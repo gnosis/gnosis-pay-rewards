@@ -1,5 +1,6 @@
 import {
   createGnosisTokenBalanceSnapshotDocument,
+  createGnosisTokenBalanceSnapshotDocumentId,
   createGnosisTokenBalanceSnapshotModel,
   createWeekRewardsSnapshotDocument,
   GnosisPaySafeAddressModelType,
@@ -7,12 +8,13 @@ import {
   WeekCashbackRewardModelType,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import { gnoToken, toWeekId, getTokenBalanceOf } from '@karpatkey/gnosis-pay-rewards-sdk';
-import { Address, formatUnits } from 'viem';
+import { Address, formatUnits, isAddress } from 'viem';
 
 import { GnosisChainPublicClient } from './types';
 import { getGnosisTokenTransferLogs } from '../gp/getGnosisTokenTransferLogs.js';
 import { isGnosisPaySafeAddress } from '../gp/isGnosisPaySafeAddress.js';
 import { getBlockByNumber } from './actions.js';
+import { LogAlreadyProcessedError } from './errors.js';
 
 type MongooseModels = {
   gnosisPaySafeAddressModel: GnosisPaySafeAddressModelType;
@@ -30,15 +32,21 @@ export async function processGnosisTokenTransferLog({
   mongooseModels: MongooseModels;
 }) {
   try {
-    const { blockNumber, transactionHash } = log;
+    const { blockNumber } = log;
     const { gnosisPaySafeAddressModel, gnosisTokenBalanceSnapshotModel, weekCashbackRewardModel } = mongooseModels;
     const { from, to } = log.args;
 
-    // Validate that the log has not already been processed
-    await validateLogIsNotAlreadyProcessed(mongooseModels.gnosisTokenBalanceSnapshotModel, transactionHash);
+    if (!isAddress(from as `0x${string}`) || !isAddress(to as `0x${string}`)) {
+      throw new Error(`Invalid sender (${from}) or receiver (${to}) address`, {
+        cause: 'INVALID_SENDER_OR_RECEIVER_ADDRESS',
+      });
+    }
+
+    const sender = from as `0x${string}`;
+    const receiver = to as `0x${string}`;
 
     const [isSenderGnosisPaySafe, isReceiverGnosisPaySafe] = await Promise.all(
-      [from, to].map((address) =>
+      [sender, receiver].map((address) =>
         isGnosisPaySafeAddress({
           address,
           client,
@@ -53,7 +61,9 @@ export async function processGnosisTokenTransferLog({
       throw new Error('Neither sender nor receiver is a Gnosis Pay Safe');
     }
 
-    const safeAddress = (isSenderGnosisPaySafe ? from : to).toLowerCase() as Address;
+    const safeAddress = (isSenderGnosisPaySafe ? sender : receiver).toLowerCase() as Address;
+
+    await validateLogIsNotAlreadyProcessed(gnosisTokenBalanceSnapshotModel, blockNumber, safeAddress);
 
     const gnosisTokenBalanceSnapshotDocument = await takeGnosisTokenBalanceSnapshot({
       gnosisTokenBalanceSnapshotModel,
@@ -78,11 +88,15 @@ export async function processGnosisTokenTransferLog({
 
 async function validateLogIsNotAlreadyProcessed(
   gnosisTokenBalanceSnapshotModel: ReturnType<typeof createGnosisTokenBalanceSnapshotModel>,
-  transactionHash: string,
+  blockNumber: bigint,
+  safeAddress: Address,
 ) {
-  const existing = await gnosisTokenBalanceSnapshotModel.findById(transactionHash);
-  if (existing) {
-    throw new Error('Log already processed');
+  const documentExists = await gnosisTokenBalanceSnapshotModel.exists({
+    _id: createGnosisTokenBalanceSnapshotDocumentId(Number(blockNumber), safeAddress),
+  });
+
+  if (documentExists) {
+    throw new LogAlreadyProcessedError('Log already processed');
   }
 }
 

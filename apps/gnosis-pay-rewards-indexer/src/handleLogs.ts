@@ -1,7 +1,7 @@
 import { WeekIdFormatType } from '@karpatkey/gnosis-pay-rewards-sdk';
-import { createMongooseLogger, LogLevel } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import { PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';
+import { Logger } from 'winston';
 
 import { getGnosisPaySpendLogs } from './gp/getGnosisPaySpendLogs.js';
 import { getGnosisPayRefundLogs } from './gp/getGnosisPayRefundLogs.js';
@@ -16,51 +16,65 @@ import { processGnosisPayClaimOgNftLog } from './process/processGnosisPayClaimOg
 
 import { buildSocketIoServer } from './server.js';
 
-export async function handleBatchLogs({
+export async function handleSpendLogs({
+  logs,
+  client,
+  mongooseModels,
+  socketIoServer,
+  logger,
+}: WithLogger<{
+  logs: Awaited<ReturnType<typeof getGnosisPaySpendLogs>>;
+  client: PublicClient<Transport, typeof gnosis>;
+  mongooseModels: Parameters<typeof processSpendLog>[0]['mongooseModels'];
+  socketIoServer?: ReturnType<typeof buildSocketIoServer>;
+}>) {
+  for (const log of logs) {
+    try {
+      const { data, error } = await processSpendLog({
+        client,
+        log,
+        mongooseModels,
+      });
+
+      if (error) throw error;
+
+      if (data !== null && socketIoServer) {
+        socketIoServer.emit('newSpendTransaction', data.gnosisPayTransaction);
+        socketIoServer.emit('newTransaction', data.gnosisPayTransaction);
+        socketIoServer.emit('currentWeekMetricsSnapshotUpdated', data.weekMetricsSnapshot);
+      }
+    } catch (e) {
+      handleError(logger, e as Error, log as any);
+    }
+  }
+}
+
+export async function handleRefundLogs({
   client,
   mongooseModels,
   socketIoServer,
   logger,
   logs,
 }: WithLogger<{
-  logs: (
-    | Awaited<ReturnType<typeof getGnosisPaySpendLogs>>[0]
-    | Awaited<ReturnType<typeof getGnosisPayRefundLogs>>[0]
-  )[];
+  logs: Awaited<ReturnType<typeof getGnosisPayRefundLogs>>;
   client: PublicClient<Transport, typeof gnosis>;
   mongooseModels: Parameters<typeof processSpendLog>[0]['mongooseModels'];
-  socketIoServer: ReturnType<typeof buildSocketIoServer>;
+  socketIoServer?: ReturnType<typeof buildSocketIoServer>;
 }>) {
   for (const log of logs) {
     try {
-      if (log.eventName === 'Spend') {
-        const { data, error } = await processSpendLog({
-          client,
-          log,
-          mongooseModels,
-        });
+      const { data, error } = await processRefundLog({
+        client,
+        log,
+        mongooseModels,
+      });
 
-        if (error) throw error;
+      if (error) throw error;
 
-        if (data !== null) {
-          socketIoServer.emit('newSpendTransaction', data.gnosisPayTransaction);
-          socketIoServer.emit('newTransaction', data.gnosisPayTransaction);
-          socketIoServer.emit('currentWeekMetricsSnapshotUpdated', data.weekMetricsSnapshot);
-        }
-      } else if (log.eventName === 'Transfer') {
-        const { data, error } = await processRefundLog({
-          client,
-          log,
-          mongooseModels,
-        });
-
-        if (error) throw error;
-
-        if (data !== null) {
-          socketIoServer.emit('newRefundTransaction', data.gnosisPayTransaction);
-          socketIoServer.emit('newTransaction', data.gnosisPayTransaction);
-          socketIoServer.emit('currentWeekMetricsSnapshotUpdated', data.weekMetricsSnapshot);
-        }
+      if (data !== null && socketIoServer) {
+        socketIoServer.emit('newRefundTransaction', data.gnosisPayTransaction);
+        socketIoServer.emit('newTransaction', data.gnosisPayTransaction);
+        socketIoServer.emit('currentWeekMetricsSnapshotUpdated', data.weekMetricsSnapshot);
       }
     } catch (e) {
       handleError(logger, e as Error, log as any);
@@ -195,35 +209,38 @@ export async function handleGnosisPayRewardsDistributionLogs({
   // Log the results
   for (const [week, { receivedRewardsCount, notReceivedRewardsCount }] of addressesPerWeek) {
     try {
-      const message = `Week ${week} rewards distribution: ${receivedRewardsCount} received, ${notReceivedRewardsCount} not received`;
-      console.log(message);
-      await logger.logDebug({ message });
+      logger.debug(
+        `week ${week} rewards distribution: ${receivedRewardsCount} received, ${notReceivedRewardsCount} not received`,
+        {
+          week,
+          receivedRewardsCount,
+          notReceivedRewardsCount,
+        },
+      );
     } catch (e) {}
   }
 }
 
 function handleError(
-  logger: ReturnType<typeof createMongooseLogger>,
+  logger: Logger,
   error: Error,
   logish: { eventName: string; transactionHash: string; blockNumber: bigint },
 ) {
-  console.error(error);
-
-  logger.log({
-    level: error.cause === 'LOG_ALREADY_PROCESSED' ? LogLevel.WARN : LogLevel.ERROR,
-    message: `Error processing ${logish.eventName} log (${logish.transactionHash}) at block ${logish.blockNumber} with error: ${error.message}`,
-    metadata: {
+  logger.log(
+    error.cause === 'LOG_ALREADY_PROCESSED' ? 'warn' : 'error',
+    `Error processing ${logish.eventName} log (${logish.transactionHash}) at block ${logish.blockNumber} with error: ${error.message}`,
+    {
       originalError: error.message,
       log: {
         ...logish,
         blockNumber: Number(logish.blockNumber),
       },
     },
-  });
+  );
 }
 
 type WithLogger<T> = T & {
-  logger: ReturnType<typeof createMongooseLogger>;
+  logger: Logger;
 };
 
 type LogsType<FunctionType extends (...args: any[]) => unknown> = Awaited<ReturnType<FunctionType>>;
