@@ -1,0 +1,4 @@
+{
+  "watch": ["src/", "schema.graphql", "network.json"],
+  "exec": "pnpm run codegen && pnpm run build"
+}

@@ -1,76 +1,65 @@
-specVersion: 1.0.0
+specVersion: 1.2.0
 indexerHints:
   prune: auto
 schema:
   file: ./schema.graphql
 dataSources:
   - kind: ethereum
-    name: EuroToken
-    network: gnosis
-    source:
-      address: "0xcB444e90D8198415266c6a2724b7900fb12FC56E"
-      abi: Erc20
-      startBlock: 34707000
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.7
-      language: wasm/assemblyscript
-      file: ./src/transactions.ts
-      entities:
-        - Transfer
-      abis:
-        - name: Erc20
-          file: ./abis/erc20.json
-        - name: Oracle
-          file: ./abis/oracle.json
-        - name: SafeModule
-          file: ./abis/SafeModule.json
-      eventHandlers:
-        - event: Transfer(indexed address,indexed address,uint256)
-          handler: handleTransfer
-  - kind: ethereum
     name: GnosisPaySpender
     network: gnosis
     source:
-      address: "0xcFF260bfbc199dC82717494299b1AcADe25F549b"
-      abi: Spender
-      startBlock: 34707000
+      address: "0xcff260bfbc199dc82717494299b1acade25f549b"
+      abi: GnosisPaySpender
+      startBlock: 35536000
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.7
+      apiVersion: 0.0.9
       language: wasm/assemblyscript
-      file: ./src/transactions.ts
+      file: ./src/spender.ts
       entities:
+        - GnosisPaySpender
         - GnosisPaySafe
+        - GnosisPayTransaction
       abis:
-        - name: Spender
-          file: ./abis/spender.json
+        - name: GnosisPaySpender
+          file: ./abis/gnosis-pay-spender.json
+        - name: SafeModule
+          file: ./abis/safe-module.json
         - name: Erc20
           file: ./abis/erc20.json
-        - name: Oracle
-          file: ./abis/oracle.json
-        - name: SafeModule
-          file: ./abis/SafeModule.json
+        - name: Erc20Bytes
+          file: ./abis/erc20-bytes.json
+        - name: PriceOracle
+          file: ./abis/price-oracle.json
       eventHandlers:
         - event: Spend(address,address,address,uint256)
           handler: handleSpend
+      blockHandlers:
+        - handler: handleOnce
+          filter:
+            kind: once
+templates:
   - kind: ethereum
-    name: BritishPoundToken
+    name: GnosisPayToken
     network: gnosis
     source:
-      address: "0x5Cb9073902F2035222B9749F8fB0c9BFe5527108"
       abi: Erc20
-      startBlock: 34707000
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.7
+      apiVersion: 0.0.9
       language: wasm/assemblyscript
       file: ./src/transactions.ts
       entities:
-        - Transfer
+        - Token
       abis:
         - name: Erc20
           file: ./abis/erc20.json
+        - name: Erc20Bytes
+          file: ./abis/erc20-bytes.json
+        - name: PriceOracle
+          file: ./abis/price-oracle.json
+        - name: SafeModule
+          file: ./abis/safe-module.json
       eventHandlers:
         - event: Transfer(indexed address,indexed address,uint256)
           handler: handleTransfer

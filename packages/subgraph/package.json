@@ -4,17 +4,19 @@
   "scripts": {
     "codegen": "graph codegen",
     "build": "graph build",
-    "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ karpatkey/gnosis-pay-rewards-subgraph",
+    "deploy": "graph deploy --node https://api.studio.thegraph.com/deploy/ gnosis-pay-rewards",
     "create-local": "graph create --node http://localhost:8020/ karpatkey/gnosis-pay-rewards-subgraph",
     "remove-local": "graph remove --node http://localhost:8020/ karpatkey/gnosis-pay-rewards-subgraph",
     "deploy-local": "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 karpatkey/gnosis-pay-rewards-subgraph",
-    "test": "graph test"
+    "test": "graph test",
+    "watch": "nodemon"
   },
   "dependencies": {
-    "@graphprotocol/graph-cli": "0.80.0",
-    "@graphprotocol/graph-ts": "0.32.0"
+    "@graphprotocol/graph-cli": "0.88.0",
+    "@graphprotocol/graph-ts": "0.35.1"
   },
   "devDependencies": {
-    "matchstick-as": "0.5.0"
+    "matchstick-as": "0.5.0",
+    "nodemon": "^3.1.7"
   }
 }

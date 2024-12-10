@@ -26,6 +26,11 @@ const DAYS_IN_MONTH = [
   BigInt.fromI32(31),
 ];
 
+/**
+ * Converts a timestamp to a week ID in the format of YYYY-MM-DD where MM is the Sunday of the week.
+ * @param timestamp - The timestamp to convert.
+ * @returns The week ID in the format of YYYY-MM-DD.
+ */
 export function timestampToWeekId(timestamp: BigInt): string {
   // Calculate the number of days since the Unix epoch (January 1, 1970)
   let daysSinceEpoch = mathFloor(timestamp.div(SECONDS_IN_A_DAY));
@@ -33,11 +38,11 @@ export function timestampToWeekId(timestamp: BigInt): string {
   // Determine the day of the week (0 is Thursday, 6 is Wednesday)
   const dayOfWeek = daysSinceEpoch.plus(FOUR).mod(DAYS_IN_A_WEEK);
 
-  // Calculate the number of days to add to reach Sunday
-  const daysToSunday = SIX.minus(dayOfWeek).mod(DAYS_IN_A_WEEK);
+  // Calculate the number of days to subtract to reach the previous Sunday
+  const daysToSunday = dayOfWeek;
 
-  // Calculate the total days to reach the upcoming Sunday
-  daysSinceEpoch = daysSinceEpoch.plus(daysToSunday);
+  // Calculate the total days to reach the previous Sunday
+  daysSinceEpoch = daysSinceEpoch.minus(daysToSunday);
 
   // List of days in each month
   const daysInMonth = DAYS_IN_MONTH;
@@ -78,5 +83,6 @@ function mathFloor(value: BigInt): BigInt {
 }
 
 function isLeapYear(year: BigInt): boolean {
-  return (year.mod(FOUR).isZero() && year.mod(HUNDRED).isZero()) || year.mod(FOUR_HUNDRED).isZero();
+  return year.mod(FOUR).isZero() &&
+         (!year.mod(HUNDRED).isZero() || year.mod(FOUR_HUNDRED).isZero());
 }

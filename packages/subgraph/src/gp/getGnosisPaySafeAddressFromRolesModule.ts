@@ -1,8 +1,13 @@
 import { Address } from '@graphprotocol/graph-ts';
-import { SafeModule as SafeModuleContract } from '../../generated/EuroToken/SafeModule';
+import { SafeModule as SafeModuleContract } from '../../generated/GnosisPaySpender/SafeModule';
+import { addressZero } from '../constants';
 
-export async function getGnosisPaySafeAddressFromRolesModule(rolesModuleAddress: Address): Address {
-  const safeModuleContract = SafeModuleContract.bind(rolesModuleAddress);
+export function getGnosisPaySafeAddressFromRolesModule(rolesModuleAddress: Address): Address {
+  const safeModuleContract = SafeModuleContract.bind(rolesModuleAddress).try_avatar();
 
-  return safeModuleContract.avatar();
+  if (safeModuleContract.reverted) {
+    return addressZero;
+  }
+
+  return safeModuleContract.value;
 }
