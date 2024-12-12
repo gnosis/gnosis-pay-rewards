@@ -35,6 +35,7 @@ import {
   handleGnosisPayRewardsDistributionLogs,
   handleRefundLogs,
 } from './handleLogs.js';
+import { handleBlock } from './handleBlock.js';
 
 export type StartIndexingParamsType = {
   client: PublicClient<Transport, typeof gnosis>;
@@ -137,6 +138,8 @@ export async function startIndexing({
         ...prev,
         latestBlockNumber: block.number,
       }));
+
+      handleBlock({ block, client, logger, mongooseModels });
     },
   });
 

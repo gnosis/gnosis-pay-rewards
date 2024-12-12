@@ -1,5 +1,6 @@
 import { PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';
+import { Logger } from 'winston';
 
 /**
  * Common params for all GnosisPay getLogs functions
@@ -27,14 +28,16 @@ export function buildRetryOptions({
   retries = defaultRetries,
   name,
   verbose = false,
+  logger,
 }: {
   retries?: number;
   name: string;
   verbose?: boolean;
+  logger?: Logger;
 }) {
   const onRetry = (error: Error, attempt: number) => {
     if (verbose) {
-      console.log(`${name}: failed on attempt ${attempt}`, error);
+      logger?.info(`${name}: failed on attempt ${attempt}`, error);
     }
   };
 

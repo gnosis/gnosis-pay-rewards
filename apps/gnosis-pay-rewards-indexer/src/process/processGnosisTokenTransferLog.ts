@@ -63,8 +63,6 @@ export async function processGnosisTokenTransferLog({
 
     const safeAddress = (isSenderGnosisPaySafe ? sender : receiver).toLowerCase() as Address;
 
-    await validateLogIsNotAlreadyProcessed(gnosisTokenBalanceSnapshotModel, blockNumber, safeAddress);
-
     const gnosisTokenBalanceSnapshotDocument = await takeGnosisTokenBalanceSnapshot({
       gnosisTokenBalanceSnapshotModel,
       weekCashbackRewardModel,
@@ -113,6 +111,8 @@ export async function takeGnosisTokenBalanceSnapshot({
   blockNumber?: bigint;
 }) {
   blockNumber = blockNumber ?? (await client.getBlockNumber());
+
+  await validateLogIsNotAlreadyProcessed(gnosisTokenBalanceSnapshotModel, blockNumber, safeAddress);
 
   const block = await getBlockByNumber({
     blockNumber,
