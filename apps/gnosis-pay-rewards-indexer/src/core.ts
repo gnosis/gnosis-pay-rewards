@@ -60,6 +60,77 @@ export type StartIndexingParamsType = {
   logger: Logger;
 };
 
+type StartServersParamsType = {
+  client: PublicClient<Transport, typeof gnosis>;
+  mongooseModels: StartIndexingParamsType['mongooseModels'];
+  logger: Logger;
+};
+
+/**
+ * Atom for the indexer state with default values
+ */
+const indexerStateAtom = atom<IndexerStateAtomType>({
+  startBlock: 0n,
+  fetchBlockSize: 12n * 5n,
+  latestBlockNumber: 0n,
+  distanceToLatestBlockNumber: 0n,
+  fromBlockNumber: 0n,
+  toBlockNumber: 0n,
+});
+
+/**
+ * Store for the indexer state
+ */
+const indexerStateStore = createStore();
+
+/**
+ * Start the I/O HTTP and WebSocket servers,
+ * ports are defined in {@link HTTP_SERVER_PORT} and {@link SOCKET_IO_SERVER_PORT}
+ * @param client - the client to use for the servers
+ * @param mongooseModels - the mongoose models to use for the servers
+ * @param logger - the logger to use for the servers
+ * @returns the rest API server and the socket.io server
+ */
+export async function startIoServers({ client, mongooseModels, logger }: StartServersParamsType) {
+  const restApiServer = addHttpRoutes({
+    expressApp: buildExpressApp(),
+    client,
+    mongooseModels,
+    getIndexerState() {
+      return indexerStateStore.get(indexerStateAtom);
+    },
+    logger,
+  });
+
+  const socketIoServer = addSocketComms({
+    socketIoServer: buildSocketIoServer(restApiServer),
+    mongooseModels,
+  });
+
+  restApiServer.listen(HTTP_SERVER_PORT, HTTP_SERVER_HOST);
+  socketIoServer.listen(SOCKET_IO_SERVER_PORT);
+
+  const apiServerUrl = `http://${HTTP_SERVER_HOST}:${HTTP_SERVER_PORT}`;
+  const wsServerUrl = `ws://${HTTP_SERVER_HOST}:${SOCKET_IO_SERVER_PORT}`;
+
+  logger.info(`WebSocket server available at ${wsServerUrl}`);
+  logger.info(`REST API server available at ${apiServerUrl}`);
+
+  return {
+    restApiServer,
+    socketIoServer,
+  };
+}
+
+/**
+ * Start the indexing process
+ * @param client - the client to use for the indexing
+ * @param resumeIndexing - if true, the indexer will resume indexing from the latest pending reward in the database
+ * @param fetchBlockSize - the size of the block range to fetch
+ * @param mongooseConnection - the mongoose connection to use for the indexing
+ * @param mongooseModels - the mongoose models to use for the indexing
+ * @param logger - the logger to use for the indexing
+ */
 export async function startIndexing({
   client,
   resumeIndexing = false,
@@ -68,15 +139,6 @@ export async function startIndexing({
   mongooseModels,
   logger,
 }: StartIndexingParamsType) {
-  const {
-    gnosisPayRewardDistributionModel,
-    gnosisPaySafeAddressModel,
-    gnosisPayTransactionModel,
-    gnosisTokenBalanceSnapshotModel,
-    weekCashbackRewardModel,
-    weekMetricsSnapshotModel,
-  } = mongooseModels;
-
   logger.debug('starting indexing');
 
   // Initialize the latest block
@@ -84,7 +146,7 @@ export async function startIndexing({
   const fromBlockNumberInitial = gnosisPayStartBlock;
   const toBlockNumberInitial = clampToBlockRange(fromBlockNumberInitial, latestBlockInitial.number, fetchBlockSize);
 
-  const indexerStateAtom = atom<IndexerStateAtomType>({
+  indexerStateStore.set(indexerStateAtom, {
     startBlock: fromBlockNumberInitial,
     fetchBlockSize,
     latestBlockNumber: latestBlockInitial.number,
@@ -92,7 +154,6 @@ export async function startIndexing({
     fromBlockNumber: fromBlockNumberInitial,
     toBlockNumber: toBlockNumberInitial,
   });
-  const indexerStateStore = createStore();
   const getIndexerState = () => indexerStateStore.get(indexerStateAtom);
 
   if (resumeIndexing === true) {
@@ -142,38 +203,6 @@ export async function startIndexing({
       handleBlock({ block, client, logger, mongooseModels });
     },
   });
-
-  const restApiServer = addHttpRoutes({
-    expressApp: buildExpressApp(),
-    client,
-    mongooseModels: {
-      gnosisTokenBalanceSnapshotModel,
-      gnosisPaySafeAddressModel,
-      gnosisPayTransactionModel,
-      weekCashbackRewardModel,
-      gnosisPayRewardDistributionModel,
-      weekMetricsSnapshotModel,
-    },
-    getIndexerState() {
-      return indexerStateStore.get(indexerStateAtom);
-    },
-    logger,
-  });
-
-  const socketIoServer = addSocketComms({
-    socketIoServer: buildSocketIoServer(restApiServer),
-    gnosisPayTransactionModel,
-    weekMetricsSnapshotModel,
-  });
-
-  restApiServer.listen(HTTP_SERVER_PORT, HTTP_SERVER_HOST);
-  socketIoServer.listen(SOCKET_IO_SERVER_PORT);
-
-  const apiServerUrl = `http://${HTTP_SERVER_HOST}:${HTTP_SERVER_PORT}`;
-  const wsServerUrl = `ws://${HTTP_SERVER_HOST}:${SOCKET_IO_SERVER_PORT}`;
-
-  logger.info(`WebSocket server available at ${wsServerUrl}`);
-  logger.info(`REST API server available at ${apiServerUrl}`);
 
   // Index all the logs until the latest block
   while (shouldFetchLogs(getIndexerState)) {
@@ -229,57 +258,35 @@ export async function startIndexing({
 
     await handleSpendLogs({
       client,
-      mongooseModels: {
-        gnosisPayTransactionModel,
-        weekCashbackRewardModel,
-        weekMetricsSnapshotModel,
-        gnosisPaySafeAddressModel,
-        gnosisTokenBalanceSnapshotModel,
-      },
+      mongooseModels,
       logs: spendLogs,
       logger,
     });
 
     await handleRefundLogs({
       client,
-      mongooseModels: {
-        gnosisPayTransactionModel,
-        weekCashbackRewardModel,
-        weekMetricsSnapshotModel,
-        gnosisPaySafeAddressModel,
-        gnosisTokenBalanceSnapshotModel,
-      },
+      mongooseModels,
       logs: refundLogs,
       logger,
-      socketIoServer,
     });
 
     await handleGnosisTokenTransferLogs({
       client,
-      mongooseModels: {
-        gnosisPaySafeAddressModel,
-        gnosisTokenBalanceSnapshotModel,
-        weekCashbackRewardModel,
-      },
+      mongooseModels,
       logs: gnosisTokenTransferLogs,
       logger,
     });
 
     await handleGnosisPayRewardsDistributionLogs({
       client,
-      mongooseModels: {
-        gnosisPayRewardDistributionModel,
-        weekCashbackRewardModel,
-      },
+      mongooseModels,
       logs: gnosisPayRewardDistributionLogs,
       logger,
     });
 
     await handleGnosisPayOgNftTransferLogs({
       client,
-      mongooseModels: {
-        gnosisPaySafeAddressModel,
-      },
+      mongooseModels,
       logs: claimOgNftLogs,
       logger,
     });

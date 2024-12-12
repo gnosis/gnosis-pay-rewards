@@ -1,7 +1,7 @@
 process.env.TZ = 'UTC'; // Set the timezone to UTC
 import './sentry.js'; // imported first to setup sentry
 import { gnosisChainPublicClient as client } from './publicClient.js';
-import { startIndexing, StartIndexingParamsType } from './core.js';
+import { startIndexing, StartIndexingParamsType, startIoServers } from './core.js';
 import { FETCH_BLOCK_SIZE, MONGODB_URI, RESUME_INDEXING } from './config/env.js';
 import {
   createBlockModel,
@@ -38,6 +38,14 @@ async function main(resumeIndexing: boolean = RESUME_INDEXING) {
       gnosisPayRewardDistributionModel: createGnosisPayRewardDistributionModel(mongooseConnection),
     };
 
+    // start the I/O servers
+    await startIoServers({
+      client,
+      mongooseModels,
+      logger,
+    });
+
+    // start the indexing process
     await startIndexing({
       client,
       fetchBlockSize: FETCH_BLOCK_SIZE,

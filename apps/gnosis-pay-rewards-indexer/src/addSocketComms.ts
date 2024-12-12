@@ -6,16 +6,17 @@ import {
   WeekMetricsSnapshotModelType,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import { buildSocketIoServer } from './server.js';
+import { MongooseConfiguredModels } from './process/types.js';
 
 export function addSocketComms({
   socketIoServer,
-  gnosisPayTransactionModel,
-  weekMetricsSnapshotModel,
+  mongooseModels,
 }: {
   socketIoServer: ReturnType<typeof buildSocketIoServer>;
-  gnosisPayTransactionModel: GnosisPayTransactionModelType;
-  weekMetricsSnapshotModel: WeekMetricsSnapshotModelType;
+  mongooseModels: MongooseConfiguredModels;
 }) {
+  const { gnosisPayTransactionModel, weekMetricsSnapshotModel } = mongooseModels;
+
   // Emit the 10 recent pending rewards to the UI when a client connects
   socketIoServer.on('connection', async (socketClient) => {
     socketClient.on('disconnect', () => {
@@ -23,14 +24,14 @@ export function addSocketComms({
     });
 
     socketClient.on('getRecentTransactions', async (limit: number) => {
-      const spendTransactions = (await gnosisPayTransactionModel
+      const spendTransactions = ((await gnosisPayTransactionModel
         .find()
         .populate({
           path: 'amountToken',
         })
         .limit(limit)
         .sort({ blockNumber: -1 })
-        .lean()) as unknown as GnosisPayTransactionFieldsType_Populated[];
+        .lean()) as unknown) as GnosisPayTransactionFieldsType_Populated[];
       socketClient.emit('recentTransactions', spendTransactions);
     });
 
@@ -51,7 +52,7 @@ export function addSocketComms({
       const allWeekData = await weekMetricsSnapshotModel.find().sort({ timestamp: 1 });
       socketClient.emit(
         'allWeekMetricsSnapshots',
-        allWeekData.map((w) => w.toJSON()),
+        allWeekData.map((w) => w.toJSON())
       );
     });
   });
