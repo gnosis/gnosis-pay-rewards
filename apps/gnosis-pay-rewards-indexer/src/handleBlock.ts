@@ -12,6 +12,7 @@ import { Logger } from 'winston';
 import { GnosisChainPublicClient } from './process/types.js';
 import { takeGnosisTokenBalanceSnapshot } from './process/processGnosisTokenTransferLog.js';
 import { buildRetryOptions } from './gp/commons.js';
+import { GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL } from './config/env.js';
 
 type HandleBlockParamsType = {
   block: Block;
@@ -46,10 +47,9 @@ async function handleBlockGnosisTokenBalanceSnapshots({
     return;
   }
 
-  if (block.number % 100n === 0n) {
-    childLogger.info('existing gnosis token balance snapshots', {
-      blockNumber: block.number,
-    });
+  // Take a snapshot every 15000 blocks
+  if (block.number % GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL === 0n) {
+    return;
   }
 
   // transform the timestamp to a week number

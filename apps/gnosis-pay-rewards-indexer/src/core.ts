@@ -192,7 +192,6 @@ export async function startIndexing({
   client.watchBlocks({
     includeTransactions: false,
     onBlock(block) {
-      console.log('block', block.number);
       updateIndexerState({ latestBlockNumber: block.number }, logger);
 
       handleBlock({ block, client, logger, mongooseModels });

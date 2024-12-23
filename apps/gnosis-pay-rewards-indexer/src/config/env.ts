@@ -1,4 +1,5 @@
 import { config } from 'dotenv';
+import { z } from 'zod';
 
 // Load the config
 config();
@@ -10,63 +11,61 @@ if (env.NODE_ENV === 'development') {
   config({ path: '.env.development' });
 }
 
-const requiredKeys = ['JSON_RPC_PROVIDER_GNOSIS', 'SENTRY_DSN', 'MONGODB_URI'];
-
-// Check if all required keys are set
-requiredKeys.forEach((key) => {
-  if (!process.env[key]) {
-    throw new Error(`Environment variable ${key} is not set`);
-  }
+const envSchema = z.object({
+  // Required variables
+  JSON_RPC_PROVIDER_GNOSIS: z.string().url(),
+  WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS: z.string().optional(),
+  SENTRY_DSN: z.string().optional(),
+  MONGODB_URI: z.string().min(1),
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  IS_DOCKER: z
+    .string()
+    .transform((val) => val === 'true')
+    .default('false'),
+  HTTP_SERVER_PORT: z.coerce.number().default(3000),
+  HTTP_SERVER_HOST: z.string().default('0.0.0.0'),
+  SOCKET_IO_SERVER_PORT: z.coerce.number().default(4000),
+  MONGODB_DEBUG: z
+    .string()
+    .transform((val) => val === 'true')
+    .default('false'),
+  /**
+   * Whether to resume indexing from the last block number
+   */
+  RESUME_INDEXING: z
+    .string()
+    .transform((val) => val.toLowerCase() === 'true')
+    .default('false'),
+  /**
+   * How many blocks to fetch at a time
+   */
+  FETCH_BLOCK_SIZE: z
+    .string()
+    .transform((val) => BigInt(val))
+    .default('60'),
+  /**
+   * How many blocks to wait before taking a snapshot of the Gnosis token balances
+   */
+  GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL: z
+    .string()
+    .transform((val) => BigInt(val))
+    .default('15000'),
 });
 
-/**
- * The environment the app is running in, defaults to development
- */
-export const NODE_ENV = env.NODE_ENV || 'development';
-/**
- * Whether the app is running in a Docker container
- */
-export const IS_DOCKER = env.IS_DOCKER === 'true';
-
-/**
- * The port for the HTTP server, defaults to 3000
- */
-export const HTTP_SERVER_PORT = env.HTTP_SERVER_PORT ? parseInt(env.HTTP_SERVER_PORT) : 3000;
-/**
- * The host for the HTTP server, defaults to 0.0.0.0
- */
-export const HTTP_SERVER_HOST = env.HTTP_SERVER_HOST || '0.0.0.0'; // 0.0.0.0 allows access from outside the container
-/**
- * The port for the socket.io server, defaults to 4000
- */
-export const SOCKET_IO_SERVER_PORT = env.SOCKET_IO_SERVER_PORT ? parseInt(env.SOCKET_IO_SERVER_PORT) : 4000;
-
-/**
- * MongoDB
- */
-export const MONGODB_URI = env.MONGODB_URI as string;
-export const MONGODB_DEBUG = env.MONGODB_DEBUG === 'true' ? true : false;
-
-/**
- * Sentry Debug DSN
- */
-export const SENTRY_DSN = env.SENTRY_DSN as string;
-
-/**
- * JSON RPC Providers
- */
-export const JSON_RPC_PROVIDER_GNOSIS = env.JSON_RPC_PROVIDER_GNOSIS as string;
-/**
- * Websocket JSON RPC Providers
- */
-export const WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS = env.WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS as string;
-
-/**
- * Whether to resume indexing from the last block or start from the beginning
- */
-export const RESUME_INDEXING = env.RESUME_INDEXING?.toLowerCase() === 'true' ? true : false;
-
-/**
- * The block size to index in one go, defaults to 5 minutes
- */
-export const FETCH_BLOCK_SIZE = env.FETCH_BLOCK_SIZE ? BigInt(env.FETCH_BLOCK_SIZE) : 12n * 5n;
+// Validate and parse environment variables
+// Replace individual exports with parsed values
+export const {
+  NODE_ENV,
+  IS_DOCKER,
+  HTTP_SERVER_PORT,
+  HTTP_SERVER_HOST,
+  SOCKET_IO_SERVER_PORT,
+  MONGODB_URI,
+  MONGODB_DEBUG,
+  SENTRY_DSN,
+  JSON_RPC_PROVIDER_GNOSIS,
+  WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS,
+  RESUME_INDEXING,
+  FETCH_BLOCK_SIZE,
+  GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL,
+} = envSchema.parse(process.env);
