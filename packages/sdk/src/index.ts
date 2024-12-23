@@ -12,5 +12,5 @@ export * from './database/gnosisTokenBalanceSnapshot';
 export * from './socket';
 export * from './oracle';
 export * from './getTokenBalanceOf';
-export * from './state';
+export * from './indexr-state';
 export * from './getTokenPricesAtBlockNumber';

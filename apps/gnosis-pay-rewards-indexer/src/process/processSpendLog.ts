@@ -23,8 +23,6 @@ import {
   createGnosisTokenBalanceSnapshotDocument,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import { Model } from 'mongoose';
-import dayjs from 'dayjs';
-import dayjsUtcPlugin from 'dayjs/plugin/utc.js';
 import { formatUnits, Address, isAddressEqual, isAddress } from 'viem';
 import { getGnosisPaySpendLogs } from '../gp/getGnosisPaySpendLogs.js';
 import { getBlockByNumber } from './actions.js';
@@ -32,11 +30,10 @@ import { getGnosisPaySafeAddressFromModule } from '../gp/getGnosisPaySafeAddress
 import { getGnosisPayRefundLogs } from '../gp/getGnosisPayRefundLogs.js';
 import { hasGnosisPayOgNft } from '../gp/hasGnosisPayOgNft.js';
 import { getGnosisPaySafeOwners as getGnosisPaySafeOwnersCore } from '../gp/getGnosisPaySafeOwners.js';
-
+import { dayjsUtc as dayjs } from '../dayjs-utc.js';
 import { MongooseConfiguredModels, ProcessLogFnDataType, ProcessLogFunctionParams } from './types.js';
 import { LogAlreadyProcessedError } from './errors.js';
 
-dayjs.extend(dayjsUtcPlugin);
 
 export async function processSpendLog({
   client,

@@ -20,9 +20,8 @@ import {
   GnosisPaySafeAddressDocumentFieldsType_Unpopulated,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import { Express, Response } from 'express';
-import dayjs from 'dayjs';
-import dayjsUtc from 'dayjs/plugin/utc.js';
-import { Address, isAddress, PublicClient, Transport } from 'viem';
+
+import { Address, isAddress, PublicClient, Transport, stringify } from 'viem';
 import { gnosis } from 'viem/chains';
 import { Logger } from 'winston';
 import { z, ZodError } from 'zod';
@@ -31,8 +30,7 @@ import { takeGnosisTokenBalanceSnapshot } from './process/processGnosisTokenTran
 import { getGnosisPaySafeOwners } from './gp/getGnosisPaySafeOwners.js';
 import { isGnosisPaySafeAddress } from './gp/isGnosisPaySafeAddress.js';
 import { hasGnosisPayOgNft } from './gp/hasGnosisPayOgNft.js';
-
-dayjs.extend(dayjsUtc);
+import { dayjsUtc as dayjs } from './dayjs-utc.js';
 
 export function addHttpRoutes({
   expressApp,
@@ -71,14 +69,10 @@ export function addHttpRoutes({
 
   expressApp.get<'/status'>('/status', (_, res) => {
     const state = getIndexerState();
-    const indexerState = Object.fromEntries(
-      Object.entries(state).map(([key, value]) => [key, typeof value === 'bigint' ? Number(value) : value]),
-    );
+    const indexerState = JSON.parse(stringify(state)); // vime handles most of the types
 
     return res.send({
-      data: {
-        indexerState,
-      },
+      data: indexerState,
       status: 'ok',
       statusCode: 200,
     });

@@ -36,6 +36,7 @@ import {
   handleRefundLogs,
 } from './handleLogs.js';
 import { handleBlock } from './handleBlock.js';
+import { dayjsUtc as dayjs } from './dayjs-utc.js';
 
 export type StartIndexingParamsType = {
   client: PublicClient<Transport, typeof gnosis>;
@@ -70,12 +71,15 @@ type StartServersParamsType = {
  * Atom for the indexer state with default values
  */
 const indexerStateAtom = atom<IndexerStateAtomType>({
+  startedAt: dayjs.utc().unix(),
   startBlock: 0n,
   fetchBlockSize: 12n * 5n,
   latestBlockNumber: 0n,
   distanceToLatestBlockNumber: 0n,
-  fromBlockNumber: 0n,
-  toBlockNumber: 0n,
+  range: {
+    fromBlockNumber: 0n,
+    toBlockNumber: 0n,
+  },
 });
 
 /**
@@ -139,21 +143,12 @@ export async function startIndexing({
   mongooseModels,
   logger,
 }: StartIndexingParamsType) {
-  logger.debug('starting indexing');
+  logger.info('starting indexing');
 
-  // Initialize the latest block
-  const latestBlockInitial = await client.getBlock({ includeTransactions: false });
-  const fromBlockNumberInitial = gnosisPayStartBlock;
-  const toBlockNumberInitial = clampToBlockRange(fromBlockNumberInitial, latestBlockInitial.number, fetchBlockSize);
+  // Initialize the indexer state
+  await initializeIndexerState(client, fetchBlockSize);
 
-  indexerStateStore.set(indexerStateAtom, {
-    startBlock: fromBlockNumberInitial,
-    fetchBlockSize,
-    latestBlockNumber: latestBlockInitial.number,
-    distanceToLatestBlockNumber: bigMath.abs(latestBlockInitial.number - fromBlockNumberInitial),
-    fromBlockNumber: fromBlockNumberInitial,
-    toBlockNumber: toBlockNumberInitial,
-  });
+  // Get the indexer state
   const getIndexerState = () => indexerStateStore.get(indexerStateAtom);
 
   if (resumeIndexing === true) {
@@ -164,18 +159,20 @@ export async function startIndexing({
 
     if (latestGnosisPayTransaction !== undefined) {
       const fromBlockNumber = BigInt(latestGnosisPayTransaction.blockNumber) - 1n;
-      const toBlockNumber = clampToBlockRange(fromBlockNumber, latestBlockInitial.number, fetchBlockSize);
+      const toBlockNumber = clampToBlockRange(fromBlockNumber, getIndexerState().latestBlockNumber, fetchBlockSize);
 
-      indexerStateStore.set(indexerStateAtom, (prev) => ({
-        ...prev,
-        startBlock: fromBlockNumber,
-        distanceToLatestBlockNumber: bigMath.abs(latestBlockInitial.number - fromBlockNumber),
-        fromBlockNumber,
-        toBlockNumber,
-      }));
+      updateIndexerState(
+        {
+          startBlock: fromBlockNumber,
+          distanceToLatestBlockNumber: bigMath.abs(getIndexerState().latestBlockNumber - fromBlockNumber),
+          range: { fromBlockNumber, toBlockNumber },
+        },
+        logger
+      );
+
       logger.info(`resuming indexing from block ${fromBlockNumber}`);
     } else {
-      logger.info(`no transactions found, starting from the beginning at block ${fromBlockNumberInitial}`);
+      logger.info(`no transactions found, starting from the beginning at block ${getIndexerState().startBlock}`);
     }
   } else {
     const session = await mongooseConnection.startSession();
@@ -195,34 +192,30 @@ export async function startIndexing({
   client.watchBlocks({
     includeTransactions: false,
     onBlock(block) {
-      indexerStateStore.set(indexerStateAtom, (prev) => ({
-        ...prev,
-        latestBlockNumber: block.number,
-      }));
+      console.log('block', block.number);
+      updateIndexerState({ latestBlockNumber: block.number }, logger);
 
       handleBlock({ block, client, logger, mongooseModels });
     },
   });
 
   // Index all the logs until the latest block
-  while (shouldFetchLogs(getIndexerState)) {
-    const { fromBlockNumber, toBlockNumber, latestBlockNumber } = getIndexerState();
+  while (shouldFetchLogs(getIndexerState())) {
+    const { range, latestBlockNumber } = getIndexerState();
 
-    const range = {
-      fromBlock: fromBlockNumber,
-      toBlock: toBlockNumber,
-    };
-
-    const getLogsCommonParams = {
-      client,
-      ...range,
-      verbose: true,
-    };
-
-    logger.info(`fetching logs from ${fromBlockNumber} to ${toBlockNumber}`, {
+    const scopeLogger = logger.child({
       operation: 'fetchLogs',
       range,
     });
+
+    const getLogsCommonParams = {
+      client,
+      fromBlock: range.fromBlockNumber,
+      toBlock: range.toBlockNumber,
+      verbose: true,
+    };
+
+    scopeLogger.info(`fetching logs from ${range.fromBlockNumber} to ${range.toBlockNumber}`);
     // Fetch all the logs
     const spendLogs = await getGnosisPaySpendLogs(getLogsCommonParams);
     const refundLogs = await getGnosisPayRefundLogs(getLogsCommonParams);
@@ -230,30 +223,20 @@ export async function startIndexing({
     const gnosisPayRewardDistributionLogs = await getGnosisPayRewardDistributionLogs(getLogsCommonParams);
     const claimOgNftLogs = await getGnosisPayClaimOgNftLogs(getLogsCommonParams);
 
-    logger.info(`found ${spendLogs.length} spend logs`, {
-      logId: 'spendLogs',
-      operation: 'fetchLogs',
-      range,
+    scopeLogger.debug(`found ${spendLogs.length} spend logs`, {
+      logsType: 'spendLogs',
     });
-    logger.info(`found ${refundLogs.length} refund logs`, {
-      logId: 'refundLogs',
-      operation: 'fetchLogs',
-      range,
+    scopeLogger.debug(`found ${refundLogs.length} refund logs`, {
+      logsType: 'refundLogs',
     });
-    logger.info(`found ${gnosisTokenTransferLogs.length} gnosis token transfer logs`, {
-      logId: 'gnosisTokenTransferLogs',
-      operation: 'fetchLogs',
-      range,
+    scopeLogger.debug(`found ${gnosisTokenTransferLogs.length} gnosis token transfer logs`, {
+      logsType: 'gnosisTokenTransferLogs',
     });
-    logger.info(`found ${gnosisPayRewardDistributionLogs.length} gnosis pay reward distribution logs`, {
-      logId: 'gnosisPayRewardDistributionLogs',
-      operation: 'fetchLogs',
-      range,
+    scopeLogger.debug(`found ${gnosisPayRewardDistributionLogs.length} gnosis pay reward distribution logs`, {
+      logsType: 'gnosisPayRewardDistributionLogs',
     });
-    logger.info(`found ${claimOgNftLogs.length} claim og nft logs`, {
-      logId: 'claimOgNftLogs',
-      operation: 'fetchLogs',
-      range,
+    scopeLogger.debug(`found ${claimOgNftLogs.length} claim og nft logs`, {
+      logsType: 'claimOgNftLogs',
     });
 
     await handleSpendLogs({
@@ -292,25 +275,30 @@ export async function startIndexing({
     });
 
     // Move to the next block range
-    const nextFromBlockNumber = fromBlockNumber + fetchBlockSize;
+    const nextFromBlockNumber = range.fromBlockNumber + fetchBlockSize;
     const nextToBlockNumber = clampToBlockRange(nextFromBlockNumber, latestBlockNumber, fetchBlockSize);
     // Sanity check to make sure we're not going too fast
     const distanceToLatestBlockNumber = bigMath.abs(nextToBlockNumber - latestBlockNumber);
 
-    indexerStateStore.set(indexerStateAtom, (prev) => ({
-      ...prev,
-      fromBlockNumber: nextFromBlockNumber,
-      distanceToLatestBlockNumber,
-      toBlockNumber: nextToBlockNumber,
-    }));
+    updateIndexerState(
+      {
+        distanceToLatestBlockNumber,
+        range: {
+          fromBlockNumber: nextFromBlockNumber,
+          toBlockNumber: nextToBlockNumber,
+        },
+      },
+      logger
+    );
 
     logger.debug(`distance to latest block: ${Number(distanceToLatestBlockNumber)}`);
 
-    // Cooldown for 20 seconds if we're within a distance of 10 blocks
+    // Wait for the next block if we're within a distance of 10 blocks
     if (distanceToLatestBlockNumber <= 10n) {
-      const targetBlockNumber = toBlockNumber + fetchBlockSize + 3n;
+      const targetBlockNumber = range.toBlockNumber + fetchBlockSize + 3n;
 
       logger.info(`waiting for block ${targetBlockNumber} to continue indexing`, {
+        operation: 'waitForBlock',
         targetBlockNumber,
       });
 
@@ -322,8 +310,59 @@ export async function startIndexing({
   }
 }
 
-function shouldFetchLogs(getIndexerState: () => IndexerStateAtomType) {
-  const { toBlockNumber, latestBlockNumber } = getIndexerState();
+/**
+ * Check if the indexer should fetch logs
+ * @param state - the indexer state
+ * @returns true if the indexer should fetch logs, false otherwise
+ */
+function shouldFetchLogs(state: IndexerStateAtomType) {
+  const { range, latestBlockNumber } = state;
 
-  return toBlockNumber <= latestBlockNumber;
+  return range.toBlockNumber <= latestBlockNumber;
+}
+
+/**
+ * Initialize the indexer state
+ * @param client - the client to use for the initialization
+ * @param fetchBlockSize - the block size to use for the initialization
+ * @param logger - the logger to use for the initialization
+ */
+async function initializeIndexerState(
+  client: PublicClient<Transport, typeof gnosis>,
+  fetchBlockSize: bigint,
+  logger?: Logger
+) {
+  // Initialize the latest block
+  const latestBlockInitial = await client.getBlock({ includeTransactions: false });
+  const fromBlockNumberInitial = gnosisPayStartBlock;
+  const toBlockNumberInitial = clampToBlockRange(fromBlockNumberInitial, latestBlockInitial.number, fetchBlockSize);
+
+  updateIndexerState(
+    {
+      startedAt: dayjs.utc().unix(),
+      startBlock: fromBlockNumberInitial,
+      fetchBlockSize,
+      latestBlockNumber: latestBlockInitial.number,
+      distanceToLatestBlockNumber: bigMath.abs(latestBlockInitial.number - fromBlockNumberInitial),
+      range: {
+        fromBlockNumber: fromBlockNumberInitial,
+        toBlockNumber: toBlockNumberInitial,
+      },
+    },
+    logger
+  );
+}
+
+/**
+ * Update the indexer state
+ * @param newState - the new state to update
+ * @param logger - the logger to use for the update
+ */
+function updateIndexerState(newState: Partial<IndexerStateAtomType>, logger?: Logger) {
+  logger?.info(`updating indexer state`, newState);
+
+  indexerStateStore.set(indexerStateAtom, (prev) => ({
+    ...prev,
+    ...newState,
+  }));
 }
