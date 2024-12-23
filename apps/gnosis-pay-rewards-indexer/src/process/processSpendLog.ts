@@ -428,7 +428,7 @@ async function saveToDatabase(
   });
 
   // Calculate the estimated reward for the week
-  weekRewardDocument.estimatedReward = rewardAmountResult.rewardAmountUsd;
+  weekRewardDocument.estimatedReward = rewardAmountResult.rewardAmountGno;
   await weekRewardDocument.save({ session: mongooseSession });
 
   // Create the safe address document
