@@ -48,7 +48,7 @@ async function handleBlockGnosisTokenBalanceSnapshots({
   }
 
   // Take a snapshot every 15000 blocks
-  if (block.number % GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL === 0n) {
+  if (block.number % GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL !== 0n) {
     return;
   }
 

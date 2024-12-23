@@ -37,6 +37,7 @@ export function addHttpRoutes({
   mongooseModels,
   getIndexerState,
   client,
+  logger,
 }: {
   expressApp: Express;
   mongooseModels: {
@@ -114,7 +115,7 @@ export function addHttpRoutes({
         _query,
       });
     } catch (error) {
-      return returnServerError(res, error as Error);
+      return returnServerError({ response: res, error, logger });
     }
   });
 
@@ -133,7 +134,7 @@ export function addHttpRoutes({
         statusCode: 200,
       });
     } catch (error) {
-      return returnServerError(res, error as Error);
+      return returnServerError({ response: res, error, logger });
     }
   });
 
@@ -162,8 +163,7 @@ export function addHttpRoutes({
         },
       });
     } catch (error) {
-      console.log(error);
-      return returnServerError(res, error as Error);
+      return returnServerError({ response: res, error, logger });
     }
   });
 
@@ -206,7 +206,7 @@ export function addHttpRoutes({
         statusCode: 200,
       });
     } catch (error) {
-      return returnServerError(res, error as Error);
+      return returnServerError({ response: res, error, logger });
     }
   });
 
@@ -242,14 +242,14 @@ export function addHttpRoutes({
           {
             safe: safeAddress,
           },
-          { estimatedReward: 1 },
+          { estimatedReward: 1 }
         )
         .sort({ week: -1 })
         .lean();
 
       const estimatedRewards = weeklyRewardSnapshotDocuments.reduce(
         (acc, { estimatedReward }) => estimatedReward + acc,
-        0,
+        0
       );
       // pending rewards are the rewards that are pending to be claimed
       const pendingRewards = estimatedRewards - earnedRewards;
@@ -274,8 +274,7 @@ export function addHttpRoutes({
         },
       });
     } catch (error) {
-      console.log(error);
-      return returnServerError(res, error as Error);
+      return returnServerError({ response: res, error, logger });
     }
   });
 
@@ -298,7 +297,7 @@ export function addHttpRoutes({
         },
       });
     } catch (error) {
-      return returnServerError(res, error as Error);
+      return returnServerError({ response: res, error, logger });
     }
   });
 
@@ -323,7 +322,7 @@ export function addHttpRoutes({
         statusCode: 200,
       });
     } catch (error) {
-      return returnServerError(res, error as Error);
+      return returnServerError({ response: res, error, logger });
     }
   });
 
@@ -340,9 +339,9 @@ export function addHttpRoutes({
           statusCode: 200,
         });
       } catch (error) {
-        return returnServerError(res, error as Error);
+        return returnServerError({ response: res, error, logger });
       }
-    },
+    }
   );
 
   // Handle all other routes
@@ -364,29 +363,26 @@ class CustomError extends Error {}
  * @param error Error object
  * @returns Express response object
  */
-function returnServerError(res: Response, error?: Error) {
-  if (error instanceof ZodError) {
-    return res.status(400).json({
+function returnServerError({ response, error, logger }: { response: Response; error: unknown; logger: Logger }) {
+  logger.error('http server error', { error });
+
+  const responseBody = {
+    error: 'Internal server error',
+    status: 'error',
+    statusCode: 500,
+    errorStack: error instanceof Error ? error.stack : undefined,
+  };
+
+  if (error instanceof ZodError || error instanceof CustomError) {
+    return response.status(400).json({
+      ...responseBody,
       error: error.message,
-      status: 'error',
       statusCode: 400,
     });
   }
 
-  if (error instanceof CustomError) {
-    return res.status(500).json({
-      error: error.message,
-      status: 'error',
-      errorStack: error?.stack,
-      statusCode: 500,
-    });
-  }
-
-  return res.status(500).json({
-    error: 'Internal server error',
-    status: 'error',
-    errorStack: error?.stack,
-    statusCode: 500,
+  return response.status(500).json({
+    ...responseBody,
   });
 }
 
@@ -406,7 +402,7 @@ const weekIdSchema = z
     },
     {
       message: 'Week date must be a Sunday',
-    },
+    }
   );
 
 async function getWeekRewardSnapshotWithFallback({
@@ -471,7 +467,7 @@ async function getWeekRewardSnapshotWithFallback({
     const newWeekRewardSnapshotDocument = await createWeekRewardsSnapshotDocument(
       weekCashbackRewardModel,
       week,
-      safeAddress,
+      safeAddress
     );
 
     // Carry over the net usd volume from the previous week if the current week has no transactions
@@ -509,7 +505,7 @@ async function getWeekRewardSnapshotWithFallback({
         owners: safeOwners,
         isOg,
       },
-      gnosisPaySafeAddressModel,
+      gnosisPaySafeAddressModel
     );
 
     // Refresh the document
@@ -521,7 +517,7 @@ async function getWeekRewardSnapshotWithFallback({
 
 async function getSafeAddressDistributions(
   model: ReturnType<typeof createGnosisPayRewardDistributionModel>,
-  safeAddress: Address,
+  safeAddress: Address
 ) {
   return model
     .find<GnosisPayRewardDistributionDocumentFieldsType>({
@@ -532,7 +528,7 @@ async function getSafeAddressDistributions(
 
 async function getGnosisBalanceSnapshots(
   model: ReturnType<typeof createGnosisTokenBalanceSnapshotModel>,
-  safeAddress: Address,
+  safeAddress: Address
 ) {
   return model.find({
     safe: safeAddress.toLowerCase(),
