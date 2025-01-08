@@ -17,6 +17,7 @@ export async function getLogger() {
   }
 
   loggerInstance = createLogger({
+    level: 'debug',
     levels: {
       error: 0,
       warn: 1,

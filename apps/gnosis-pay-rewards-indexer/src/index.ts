@@ -55,7 +55,7 @@ async function main(resumeIndexing: boolean = RESUME_INDEXING) {
       resumeIndexing,
     });
   } catch (e) {
-    main(true);
+    console.error(e);
   }
 }
 
