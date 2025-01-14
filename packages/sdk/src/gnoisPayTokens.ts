@@ -46,10 +46,10 @@ export const moneriumGbpToken: SerializableErc20TokenType = {
 
 export const usdcBridgeToken: SerializableErc20TokenType = {
   symbol: 'USDC.e',
-  address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  address: '0x2a22f9c3b484c3629090FeED35F17Ff8F88f76F0',
   decimals: 6,
   name: 'Bridged USDC (Gnosis)',
-  chainId: 1,
+  chainId: 100,
 };
 
 /**
