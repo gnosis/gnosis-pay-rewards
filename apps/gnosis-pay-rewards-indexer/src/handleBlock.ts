@@ -77,7 +77,7 @@ async function handleBlockGnosisTokenBalanceSnapshots({
 
   for (const safeAddress of gnosisPaySafeAddreses) {
     const doesHaveGnosisTokenBalanceSnapshot = gnosisTokenBalanceSnapshots.some((snapshot) =>
-      isAddressEqual(snapshot.safe, safeAddress)
+      isAddressEqual(snapshot.safe, safeAddress),
     );
 
     if (!doesHaveGnosisTokenBalanceSnapshot) {
@@ -104,7 +104,7 @@ export async function handleBlock({ block, client, logger, mongooseModels }: Han
       buildRetryOptions({
         name: 'handleBlockGnosisTokenBalanceSnapshots',
         logger,
-      })
+      }),
     );
     logger.info(`handled block ${block.number}`);
   } catch (error) {

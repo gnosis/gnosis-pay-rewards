@@ -2,7 +2,7 @@ process.env.TZ = 'UTC'; // Set the timezone to UTC
 import './sentry.js'; // imported first to setup sentry
 import { gnosisChainPublicClient as client } from './publicClient.js';
 import { startIndexing, StartIndexingParamsType, startIoServers } from './core.js';
-import { FETCH_BLOCK_SIZE, MONGODB_URI, RESUME_INDEXING } from './config/env.js';
+import { ENABLE_INDEXING, FETCH_BLOCK_SIZE, MONGODB_URI, RESUME_INDEXING } from './config/env.js';
 import {
   createBlockModel,
   createConnection,
@@ -44,6 +44,11 @@ async function main(resumeIndexing: boolean = RESUME_INDEXING) {
       mongooseModels,
       logger,
     });
+
+    if (ENABLE_INDEXING === false) {
+      console.log('Indexing is disabled');
+      return;
+    }
 
     // start the indexing process
     await startIndexing({

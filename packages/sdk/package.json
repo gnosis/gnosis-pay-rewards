@@ -1,7 +1,7 @@
 {
   "name": "@karpatkey/gnosis-pay-rewards-sdk",
   "private": false,
-  "version": "5.0.1-rc.0",
+  "version": "5.1.0-rc.0",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.esm.js",
@@ -70,6 +70,7 @@
     "socket.io": "^4.7.5",
     "dayjs": "^1.11.7",
     "mongoose": "^8.5.1",
+    "mongoose-paginate-v2": "^1.9.0",
     "viem": "2.7.16"
   },
   "files": [

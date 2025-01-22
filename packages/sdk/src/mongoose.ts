@@ -1,3 +1,5 @@
+import 'mongoose-paginate-v2';
+
 export * from './mongoose-src/block';
 export * from './mongoose-src/createConnection';
 export * from './mongoose-src/gnosisPaySafeAddress';

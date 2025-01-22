@@ -142,7 +142,7 @@ export async function startIndexing({
       logger.info(`resuming indexing from block ${fromBlockNumberInitial}`);
     } else {
       logger.info(
-        `no transactions found to resume indexing, starting from the beginning at block ${fromBlockNumberInitial}`
+        `no transactions found to resume indexing, starting from the beginning at block ${fromBlockNumberInitial}`,
       );
     }
   } else {

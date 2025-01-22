@@ -50,6 +50,10 @@ const envSchema = z.object({
     .string()
     .transform((val) => BigInt(val))
     .default('15000'),
+  ENABLE_INDEXING: z
+    .string()
+    .transform((val) => val.toLowerCase() === 'true')
+    .default('false'),
 });
 
 // Validate and parse environment variables
@@ -68,4 +72,5 @@ export const {
   RESUME_INDEXING,
   FETCH_BLOCK_SIZE,
   GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL,
+  ENABLE_INDEXING,
 } = envSchema.parse(process.env);

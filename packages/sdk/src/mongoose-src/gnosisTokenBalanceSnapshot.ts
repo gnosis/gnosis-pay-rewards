@@ -1,7 +1,9 @@
-import { Mongoose, Schema, Model, ClientSession } from 'mongoose';
+import { Mongoose, Schema, ClientSession, PaginateModel } from 'mongoose';
+import mongoosePaginate from 'mongoose-paginate-v2';
+import { Address, isAddress } from 'viem';
+
 import { GnosisTokenBalanceSnapshotDocumentType } from '../database/gnosisTokenBalanceSnapshot';
 import { mongooseSchemaAddressField, mongooseSchemaWeekIdField } from './sharedSchemaFields';
-import { Address, isAddress } from 'viem';
 
 export const gnosisTokenBalanceSnapshotModelName = 'GnosisTokenBalanceSnapshot' as const;
 
@@ -42,9 +44,10 @@ export const gnosisTokenBalanceSnapshotSchema = new Schema<GnosisTokenBalanceSna
   .pre('save', function (next) {
     this.safe = this.safe.toLowerCase() as Address;
     next();
-  });
+  })
+  .plugin(mongoosePaginate);
 
-export type GnosisTokenBalanceSnapshotModelType = Model<GnosisTokenBalanceSnapshotDocumentType>;
+export type GnosisTokenBalanceSnapshotModelType = PaginateModel<GnosisTokenBalanceSnapshotDocumentType>;
 
 /**
  * Creates a new Gnosis Token Balance Snapshot document id
@@ -61,10 +64,15 @@ export function createGnosisTokenBalanceSnapshotModel(
 ): GnosisTokenBalanceSnapshotModelType {
   // Return cached model if it exists
   if (mongooseConnection.models[gnosisTokenBalanceSnapshotModelName]) {
-    return mongooseConnection.models[gnosisTokenBalanceSnapshotModelName];
+    return mongooseConnection.models[
+      gnosisTokenBalanceSnapshotModelName
+    ] as unknown as GnosisTokenBalanceSnapshotModelType;
   }
 
-  return mongooseConnection.model(gnosisTokenBalanceSnapshotModelName, gnosisTokenBalanceSnapshotSchema);
+  return mongooseConnection.model(
+    gnosisTokenBalanceSnapshotModelName,
+    gnosisTokenBalanceSnapshotSchema,
+  ) as GnosisTokenBalanceSnapshotModelType;
 }
 
 /**

@@ -20,7 +20,7 @@ import {
   GnosisPaySafeAddressDocumentFieldsType_Unpopulated,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import { Express, Response } from 'express';
-
+import { FilterQuery, PaginateOptions } from 'mongoose';
 import { Address, isAddress, PublicClient, Transport, stringify } from 'viem';
 import { gnosis } from 'viem/chains';
 import { Logger } from 'winston';
@@ -242,14 +242,14 @@ export function addHttpRoutes({
           {
             safe: safeAddress,
           },
-          { estimatedReward: 1 }
+          { estimatedReward: 1 },
         )
         .sort({ week: -1 })
         .lean();
 
       const estimatedRewards = weeklyRewardSnapshotDocuments.reduce(
         (acc, { estimatedReward }) => estimatedReward + acc,
-        0
+        0,
       );
       // pending rewards are the rewards that are pending to be claimed
       const pendingRewards = estimatedRewards - earnedRewards;
@@ -326,22 +326,41 @@ export function addHttpRoutes({
     }
   });
 
-  expressApp.get<'/gnosis-balance-snapshots/:safeAddress'>(
-    '/gnosis-balance-snapshots/:safeAddress',
+  // eslint-disable-next-line
+  expressApp.get<'/gnosis-balance-snapshots', any, any, any, z.infer<typeof GetGnosisTokenBalanceSnapshotsQuerySchema>>(
+    '/gnosis-balance-snapshots',
     async (req, res) => {
       try {
-        const safeAddress = addressSchema.parse(req.params.safeAddress);
-        const snapshots = await getGnosisBalanceSnapshots(gnosisTokenBalanceSnapshotModel, safeAddress);
+        const queryParsed = GetGnosisTokenBalanceSnapshotsQuerySchema.parse(req.query);
+        const mongooseQuery: FilterQuery<GnosisTokenBalanceSnapshotDocumentType> = {};
+
+        if (queryParsed.safe) {
+          mongooseQuery.safe = queryParsed.safe?.toLowerCase();
+        }
+
+        if (queryParsed.week) {
+          mongooseQuery.weekId = queryParsed.week;
+        }
+
+        const paginationResult = await gnosisTokenBalanceSnapshotModel.paginate(mongooseQuery, {
+          customLabels: mongoosePaginateLabels,
+          lean: true,
+          limit: queryParsed.limit,
+          page: queryParsed.page,
+        });
 
         return res.json({
-          data: snapshots,
+          data: paginationResult,
+          meta: {
+            _query: mongooseQuery,
+          },
           status: 'ok',
           statusCode: 200,
         });
       } catch (error) {
         return returnServerError({ response: res, error, logger });
       }
-    }
+    },
   );
 
   // Handle all other routes
@@ -402,8 +421,15 @@ const weekIdSchema = z
     },
     {
       message: 'Week date must be a Sunday',
-    }
+    },
   );
+
+const GetGnosisTokenBalanceSnapshotsQuerySchema = z.object({
+  safe: addressSchema.optional().transform((value) => value?.toLowerCase()),
+  week: weekIdSchema.optional(),
+  limit: z.coerce.number().optional().default(100),
+  page: z.coerce.number().optional().default(1),
+});
 
 async function getWeekRewardSnapshotWithFallback({
   safeAddress,
@@ -467,7 +493,7 @@ async function getWeekRewardSnapshotWithFallback({
     const newWeekRewardSnapshotDocument = await createWeekRewardsSnapshotDocument(
       weekCashbackRewardModel,
       week,
-      safeAddress
+      safeAddress,
     );
 
     // Carry over the net usd volume from the previous week if the current week has no transactions
@@ -505,7 +531,7 @@ async function getWeekRewardSnapshotWithFallback({
         owners: safeOwners,
         isOg,
       },
-      gnosisPaySafeAddressModel
+      gnosisPaySafeAddressModel,
     );
 
     // Refresh the document
@@ -517,7 +543,7 @@ async function getWeekRewardSnapshotWithFallback({
 
 async function getSafeAddressDistributions(
   model: ReturnType<typeof createGnosisPayRewardDistributionModel>,
-  safeAddress: Address
+  safeAddress: Address,
 ) {
   return model
     .find<GnosisPayRewardDistributionDocumentFieldsType>({
@@ -526,9 +552,21 @@ async function getSafeAddressDistributions(
     .sort({ blockNumber: -1 });
 }
 
+const mongoosePaginateLabels: PaginateOptions['customLabels'] = {
+  totalDocs: 'itemCount',
+  docs: 'items',
+  limit: 'limit',
+  page: 'page',
+  nextPage: 'nextPage',
+  prevPage: 'prevPage',
+  totalPages: 'pageCount',
+  pagingCounter: 'slNo',
+  meta: 'meta',
+} as const;
+
 async function getGnosisBalanceSnapshots(
   model: ReturnType<typeof createGnosisTokenBalanceSnapshotModel>,
-  safeAddress: Address
+  safeAddress: Address,
 ) {
   return model.find({
     safe: safeAddress.toLowerCase(),

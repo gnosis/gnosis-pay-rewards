@@ -34,7 +34,6 @@ import { dayjsUtc as dayjs } from '../dayjs-utc.js';
 import { MongooseConfiguredModels, ProcessLogFnDataType, ProcessLogFunctionParams } from './types.js';
 import { LogAlreadyProcessedError } from './errors.js';
 
-
 export async function processSpendLog({
   client,
   log,

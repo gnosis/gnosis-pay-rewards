@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { WeekIdFormatType } from '@karpatkey/gnosis-pay-rewards-sdk';
 import { PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';

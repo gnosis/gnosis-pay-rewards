@@ -43,7 +43,7 @@ export async function initializeIndexerState(
   client: PublicClient<Transport, typeof gnosis>,
   fetchBlockSize: bigint,
   fromBlockNumberInitial: bigint,
-  logger?: Logger
+  logger?: Logger,
 ) {
   // Initialize the latest block
   const latestBlockInitial = await client.getBlock({ includeTransactions: false });
@@ -62,7 +62,7 @@ export async function initializeIndexerState(
         toBlockNumber: toBlockNumberInitial,
       },
     },
-    logger
+    logger,
   );
 }
 
@@ -74,7 +74,7 @@ export async function initializeIndexerState(
 function updateIndexerState(newState: Partial<IndexerStateAtomType>, logger?: Logger) {
   indexerStateStore.set(indexerStateAtom, (prevState) => {
     const changedKeys = Object.keys(newState).filter(
-      (key) => newState[key as keyof IndexerStateAtomType] !== prevState[key as keyof IndexerStateAtomType]
+      (key) => newState[key as keyof IndexerStateAtomType] !== prevState[key as keyof IndexerStateAtomType],
     ) as (keyof IndexerStateAtomType)[];
 
     // Construct the next state
@@ -83,32 +83,35 @@ function updateIndexerState(newState: Partial<IndexerStateAtomType>, logger?: Lo
       ...newState,
     };
 
-    const stateDiff = changedKeys.reduce((acc, key) => {
-      if (key === 'range') {
-        if (nextState.range.fromBlockNumber && prevState.range.fromBlockNumber !== nextState.range.fromBlockNumber) {
-          acc['range.fromBlockNumber'] = {
-            prev: prevState.range.fromBlockNumber,
-            next: nextState.range.fromBlockNumber,
-          };
+    const stateDiff = changedKeys.reduce(
+      (acc, key) => {
+        if (key === 'range') {
+          if (nextState.range.fromBlockNumber && prevState.range.fromBlockNumber !== nextState.range.fromBlockNumber) {
+            acc['range.fromBlockNumber'] = {
+              prev: prevState.range.fromBlockNumber,
+              next: nextState.range.fromBlockNumber,
+            };
+          }
+          if (nextState.range.toBlockNumber && prevState.range.toBlockNumber !== nextState.range.toBlockNumber) {
+            acc['range.toBlockNumber'] = {
+              prev: prevState.range.toBlockNumber,
+              next: nextState.range.toBlockNumber,
+            };
+          }
+        } else {
+          if (prevState[key] !== nextState[key]) {
+            acc[key] = {
+              prev: prevState[key],
+              next: nextState[key],
+            };
+          }
         }
-        if (nextState.range.toBlockNumber && prevState.range.toBlockNumber !== nextState.range.toBlockNumber) {
-          acc['range.toBlockNumber'] = {
-            prev: prevState.range.toBlockNumber,
-            next: nextState.range.toBlockNumber,
-          };
-        }
-      } else {
-        if (prevState[key] !== nextState[key]) {
-          acc[key] = {
-            prev: prevState[key],
-            next: nextState[key],
-          };
-        }
-      }
 
-      return acc;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }, {} as Record<string, { prev: any; next: any }>);
+        return acc;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      },
+      {} as Record<string, { prev: any; next: any }>,
+    );
 
     logger?.debug(`updating indexer state`, { stateDiff });
 
@@ -127,7 +130,7 @@ export function updateLatestBlockNumber(latestBlockNumber: bigint, logger?: Logg
   // Validate the latest block number
   if (latestBlockNumber < indexerState.range.toBlockNumber) {
     throw new Error(
-      `latest block number (${latestBlockNumber}) is less than the to block number (${indexerState.range.toBlockNumber})`
+      `latest block number (${latestBlockNumber}) is less than the to block number (${indexerState.range.toBlockNumber})`,
     );
   }
 
@@ -137,7 +140,7 @@ export function updateLatestBlockNumber(latestBlockNumber: bigint, logger?: Logg
       latestBlockNumber,
       distanceToLatestBlockNumber,
     },
-    logger
+    logger,
   );
 }
 
@@ -157,7 +160,7 @@ export function moveToNextBlockRange(logger?: Logger) {
   // Validate the range
   if (nextRange.fromBlockNumber < startBlock) {
     throw new Error(
-      `updateRange: fromBlockNumber (${nextRange.fromBlockNumber}) is less than the startBlock (${startBlock})`
+      `updateRange: fromBlockNumber (${nextRange.fromBlockNumber}) is less than the startBlock (${startBlock})`,
     );
   }
 
