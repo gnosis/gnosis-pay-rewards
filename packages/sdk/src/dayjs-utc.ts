@@ -4,8 +4,5 @@ import updateLocalePlugin from 'dayjs/plugin/updateLocale.js';
 
 dayjsCore.extend(dayjsUtcPlugin);
 dayjsCore.extend(updateLocalePlugin);
-// dayjsCore.locale('en', {
-//   weekStart: 1,
-// });
 
 export const dayjsUtc = dayjsCore;

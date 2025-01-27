@@ -227,6 +227,10 @@ function handleError(
   error: Error,
   logish: { eventName: string; transactionHash: string; blockNumber: bigint },
 ) {
+  if (error.cause === 'INVALID_SENDER_OR_RECEIVER_ADDRESS') {
+    return;
+  }
+
   logger.log(
     error.cause === 'LOG_ALREADY_PROCESSED' ? 'warn' : 'error',
     `Error processing ${logish.eventName} log (${logish.transactionHash}) at block ${logish.blockNumber} with error: ${error.message}`,

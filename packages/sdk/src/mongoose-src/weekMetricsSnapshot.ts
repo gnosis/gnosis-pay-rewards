@@ -1,6 +1,6 @@
 import { ClientSession, Model, Mongoose, Schema } from 'mongoose';
 import { gnosisPayTransactionModelName } from './gnosisPayTransaction.js';
-import { dayjsUtc } from './dayjsUtc.js';
+import { dayjsUtc } from '../dayjs-utc.js';
 import { WeekIdFormatType, WeekSnapshotDocumentFieldsType, toWeekId } from '../database/weekSnapshot';
 import { isHash } from 'viem';
 

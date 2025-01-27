@@ -5,6 +5,7 @@ import {
   WeekIdFormatType,
   GnosisTokenBalanceSnapshotDocumentType,
   isValidWeekId,
+  GnosisPayTokenPriceDocumentFieldsType,
 } from '@karpatkey/gnosis-pay-rewards-sdk';
 import {
   createWeekCashbackRewardDocumentId,
@@ -18,6 +19,7 @@ import {
   createGnosisPayTransactionModel,
   createGnosisPaySafeAddressModel,
   GnosisPaySafeAddressDocumentFieldsType_Unpopulated,
+  GnosisPayTokenPriceModelType,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import { Express, Response } from 'express';
 import { FilterQuery, PaginateOptions } from 'mongoose';
@@ -47,6 +49,7 @@ export function addHttpRoutes({
     weekCashbackRewardModel: ReturnType<typeof createWeekCashbackRewardModel>;
     gnosisPayRewardDistributionModel: ReturnType<typeof createGnosisPayRewardDistributionModel>;
     weekMetricsSnapshotModel: ReturnType<typeof createWeekMetricsSnapshotModel>;
+    gnosisPayTokenPriceModel: GnosisPayTokenPriceModelType;
   };
   logger: Logger;
   client: PublicClient<Transport, typeof gnosis>;
@@ -59,6 +62,7 @@ export function addHttpRoutes({
     weekCashbackRewardModel,
     gnosisPayRewardDistributionModel,
     weekMetricsSnapshotModel,
+    gnosisPayTokenPriceModel,
   } = mongooseModels;
 
   expressApp.get<'/'>('/', (_, res) => {
@@ -363,6 +367,47 @@ export function addHttpRoutes({
     },
   );
 
+  // eslint-disable-next-line
+  expressApp.get<'/token-prices', any, any, any, any, z.infer<typeof GetGnosisTokenPriceQuerySchema>>(
+    '/token-prices',
+    async (req, res) => {
+      try {
+        const queryParsed = GetGnosisTokenPriceQuerySchema.parse(req.query);
+
+        const filterQuery: FilterQuery<GnosisPayTokenPriceDocumentFieldsType> = {};
+
+        if (queryParsed.date) {
+          const dateStart = dayjs(queryParsed.date).startOf('day').unix();
+          const dateEnd = dayjs(queryParsed.date).endOf('day').unix();
+
+          filterQuery.blockTimestamp = {
+            $gte: dateStart,
+            $lte: dateEnd,
+          };
+        }
+
+        const tokenPrices = await gnosisPayTokenPriceModel
+          .find(filterQuery)
+          .populate('token', {
+            chainId: 1,
+            _id: 1,
+            symbol: 1,
+            decimals: 1,
+            name: 1,
+          })
+          .lean();
+
+        return res.json({
+          data: tokenPrices,
+          status: 'ok',
+          statusCode: 200,
+        });
+      } catch (error) {
+        return returnServerError({ response: res, error, logger });
+      }
+    },
+  );
+
   // Handle all other routes
   expressApp.all('*', (req, res) => {
     return res.status(404).json({
@@ -429,6 +474,15 @@ const GetGnosisTokenBalanceSnapshotsQuerySchema = z.object({
   week: weekIdSchema.optional(),
   limit: z.coerce.number().optional().default(100),
   page: z.coerce.number().optional().default(1),
+});
+
+const GetGnosisTokenPriceQuerySchema = z.object({
+  date: z
+    .string()
+    .refine((value) => dayjs(value).format('YYYY-MM-DD') === value, {
+      message: 'Invalid date format',
+    })
+    .optional(),
 });
 
 async function getWeekRewardSnapshotWithFallback({
@@ -563,12 +617,3 @@ const mongoosePaginateLabels: PaginateOptions['customLabels'] = {
   pagingCounter: 'slNo',
   meta: 'meta',
 } as const;
-
-async function getGnosisBalanceSnapshots(
-  model: ReturnType<typeof createGnosisTokenBalanceSnapshotModel>,
-  safeAddress: Address,
-) {
-  return model.find({
-    safe: safeAddress.toLowerCase(),
-  });
-}

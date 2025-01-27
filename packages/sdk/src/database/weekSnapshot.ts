@@ -1,9 +1,4 @@
-import dayjsCore from 'dayjs';
-import dayjsUtcPlugin from 'dayjs/plugin/utc.js';
-import updateLocalePlugin from 'dayjs/plugin/updateLocale.js';
-
-dayjsCore.extend(dayjsUtcPlugin);
-dayjsCore.extend(updateLocalePlugin);
+import { dayjsUtc } from '../dayjs-utc';
 
 const WEEK_ID_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -41,7 +36,7 @@ export const weekIdFormat = 'YYYY-MM-DD' as const;
  * @returns The week data ID
  */
 export function toWeekId(unixTimestamp: number | bigint, rollbackWeeks = 0): WeekIdFormatType {
-  const weekStart = dayjsCore.unix(Number(unixTimestamp)).utc().startOf('week').subtract(rollbackWeeks, 'week');
+  const weekStart = dayjsUtc(Number(unixTimestamp)).utc().startOf('week').subtract(rollbackWeeks, 'week');
   const yyyyMMDD = weekStart.format(weekIdFormat);
 
   return yyyyMMDD as WeekIdFormatType;

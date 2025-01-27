@@ -3,7 +3,7 @@ import { Address, isAddress } from 'viem';
 import { ClientSession, HydratedDocument, Model, Mongoose, Schema } from 'mongoose';
 import { WeekCashbackRewardDocumentFieldsType_Unpopulated } from '../database/weekReward';
 import { WeekIdFormatType, weekIdFormat } from '../database/weekSnapshot';
-import { dayjsUtc } from './dayjsUtc';
+import { dayjsUtc } from '../dayjs-utc';
 import { gnosisTokenBalanceSnapshotModelName } from './gnosisTokenBalanceSnapshot';
 import { mongooseSchemaAddressField } from './sharedSchemaFields';
 import { gnosisPaySafeAddressModelName } from './gnosisPaySafeAddress';

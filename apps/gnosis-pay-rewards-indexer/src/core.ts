@@ -1,4 +1,9 @@
-import { gnosisPayStartBlock, gnosisPayTokens, IndexerStateAtomType } from '@karpatkey/gnosis-pay-rewards-sdk';
+import {
+  gnosisPayStartBlock,
+  gnosisPayTokens,
+  gnoToken,
+  IndexerStateAtomType,
+} from '@karpatkey/gnosis-pay-rewards-sdk';
 import {
   createGnosisPayTransactionModel,
   createTokenModel,
@@ -9,6 +14,7 @@ import {
   createGnosisTokenBalanceSnapshotModel,
   createGnosisPayRewardDistributionModel,
   createGnosisPaySafeAddressModel,
+  GnosisPayTokenPriceModelType,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import { Mongoose } from 'mongoose';
 import { PublicClient, Transport } from 'viem';
@@ -40,7 +46,7 @@ import {
   moveToNextBlockRange,
   updateLatestBlockNumber,
 } from './indexer-state.js';
-import { GnosisChainPublicClient } from 'process/types.js';
+import { GnosisChainPublicClient } from './process/types.js';
 
 export type StartIndexingParamsType = {
   client: PublicClient<Transport, typeof gnosis>;
@@ -58,6 +64,7 @@ export type StartIndexingParamsType = {
     weekCashbackRewardModel: ReturnType<typeof createWeekCashbackRewardModel>;
     weekMetricsSnapshotModel: ReturnType<typeof createWeekMetricsSnapshotModel>;
     gnosisPayTokenModel: ReturnType<typeof createTokenModel>;
+    gnosisPayTokenPriceModel: GnosisPayTokenPriceModelType;
     blockModel: ReturnType<typeof createBlockModel>;
     gnosisTokenBalanceSnapshotModel: ReturnType<typeof createGnosisTokenBalanceSnapshotModel>;
     gnosisPayRewardDistributionModel: ReturnType<typeof createGnosisPayRewardDistributionModel>;
@@ -156,7 +163,7 @@ export async function startIndexing({
     await session.commitTransaction();
     await session.endSession();
     // Save the Gnosis Pay tokens to the database
-    await saveGnosisPayTokensToDatabase(mongooseModels.gnosisPayTokenModel, gnosisPayTokens);
+    await saveGnosisPayTokensToDatabase(mongooseModels.gnosisPayTokenModel, [...gnosisPayTokens, gnoToken]);
   }
 
   // Initialize the indexer state
@@ -168,7 +175,12 @@ export async function startIndexing({
     onBlock(block) {
       updateLatestBlockNumber(block.number, logger);
 
-      handleBlock({ block, client, logger, mongooseModels });
+      handleBlock({
+        blockNumber: block.number,
+        client,
+        logger,
+        mongooseModels,
+      });
     },
     onError(error) {
       logger.error('error in public client watchBlocks', { error });
@@ -290,6 +302,16 @@ async function handleRange({
     logs: claimOgNftLogs,
     logger,
   });
+
+  // Among the block range, we need to record the token prices
+  for (let blockNumber = range.fromBlockNumber; blockNumber <= range.toBlockNumber; blockNumber++) {
+    await handleBlock({
+      blockNumber,
+      client,
+      mongooseModels,
+      logger,
+    });
+  }
 }
 
 /**

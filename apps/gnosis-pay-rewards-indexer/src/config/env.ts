@@ -50,6 +50,13 @@ const envSchema = z.object({
     .string()
     .transform((val) => BigInt(val))
     .default('15000'),
+  /**
+   * How many blocks to wait before recording the token price
+   */
+  TOKEN_PRICE_SNAPSHOT_BLOCK_INTERVAL: z
+    .string()
+    .transform((val) => BigInt(val))
+    .default('720'), // ~1 hour at 5 seconds per block
   ENABLE_INDEXING: z
     .string()
     .transform((val) => val.toLowerCase() === 'true')
@@ -72,5 +79,6 @@ export const {
   RESUME_INDEXING,
   FETCH_BLOCK_SIZE,
   GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL,
+  TOKEN_PRICE_SNAPSHOT_BLOCK_INTERVAL,
   ENABLE_INDEXING,
 } = envSchema.parse(process.env);

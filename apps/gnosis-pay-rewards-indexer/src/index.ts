@@ -8,6 +8,7 @@ import {
   createConnection,
   createGnosisPayRewardDistributionModel,
   createGnosisPaySafeAddressModel,
+  createGnosisPayTokenPriceModel,
   createGnosisPayTransactionModel,
   createGnosisTokenBalanceSnapshotModel,
   createTokenModel,
@@ -33,6 +34,7 @@ async function main(resumeIndexing: boolean = RESUME_INDEXING) {
       weekCashbackRewardModel: createWeekCashbackRewardModel(mongooseConnection),
       weekMetricsSnapshotModel: createWeekMetricsSnapshotModel(mongooseConnection),
       gnosisPayTokenModel: createTokenModel(mongooseConnection),
+      gnosisPayTokenPriceModel: createGnosisPayTokenPriceModel(mongooseConnection),
       blockModel: createBlockModel(mongooseConnection),
       gnosisTokenBalanceSnapshotModel: createGnosisTokenBalanceSnapshotModel(mongooseConnection),
       gnosisPayRewardDistributionModel: createGnosisPayRewardDistributionModel(mongooseConnection),
@@ -46,7 +48,7 @@ async function main(resumeIndexing: boolean = RESUME_INDEXING) {
     });
 
     if (ENABLE_INDEXING === false) {
-      console.log('Indexing is disabled');
+      console.log('Indexing is disabled. Set ENABLE_INDEXING=true to enable indexing');
       return;
     }
 
