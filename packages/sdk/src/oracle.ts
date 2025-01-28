@@ -37,11 +37,11 @@ export async function getOraclePriceAtBlockNumber({
 }): Promise<ConditionalReturnType<true, TokenOraclePriceDataType, Error> | ConditionalReturnType<false, null, Error>> {
   try {
     if (!isAddress(oracle)) {
-      throw new Error('Oracle address is not valid');
+      throw new Error(`Oracle address (${oracle}) is not valid`);
     }
 
     if (isAddressEqual(oracle, zeroAddress)) {
-      throw new Error('Oracle address is zero');
+      throw new Error(`Oracle address (${oracle}) is zero`);
     }
 
     const oracleContract = getContract({

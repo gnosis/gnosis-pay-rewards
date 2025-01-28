@@ -123,6 +123,16 @@ export async function handleTokenPriceRecording({
     function: 'handleTokenPriceRecording',
   });
 
+  // The block has been already handled
+  const blockNumberHasTokenPrices = await mongooseModels.gnosisPayTokenPriceModel.find({
+    blockNumber: Number(blockNumber),
+  });
+
+  if (blockNumberHasTokenPrices.length > 0) {
+    childLogger.info(`block ${blockNumber} has already been handled`);
+    return;
+  }
+
   const { data: block } = await getBlockByNumber({
     blockNumber,
     client,
@@ -189,7 +199,7 @@ export async function handleBlock({ blockNumber, client, logger, mongooseModels 
       }),
     );
 
-    // logger.info(`handled block ${blockNumber}`);
+    logger.info(`handled block ${blockNumber}`);
   } catch (error) {
     logger.error(`error handling block ${blockNumber}: ${error}`);
   }

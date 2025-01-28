@@ -246,14 +246,14 @@ export function addHttpRoutes({
           {
             safe: safeAddress,
           },
-          { estimatedReward: 1 },
+          { estimatedReward: 1 }
         )
         .sort({ week: -1 })
         .lean();
 
       const estimatedRewards = weeklyRewardSnapshotDocuments.reduce(
         (acc, { estimatedReward }) => estimatedReward + acc,
-        0,
+        0
       );
       // pending rewards are the rewards that are pending to be claimed
       const pendingRewards = estimatedRewards - earnedRewards;
@@ -364,7 +364,7 @@ export function addHttpRoutes({
       } catch (error) {
         return returnServerError({ response: res, error, logger });
       }
-    },
+    }
   );
 
   // eslint-disable-next-line
@@ -386,26 +386,43 @@ export function addHttpRoutes({
           };
         }
 
-        const tokenPrices = await gnosisPayTokenPriceModel
-          .find(filterQuery)
-          .populate('token', {
-            chainId: 1,
-            _id: 1,
-            symbol: 1,
-            decimals: 1,
-            name: 1,
-          })
-          .lean();
+        const paginationResult = await gnosisPayTokenPriceModel.paginate(filterQuery, {
+          customLabels: mongoosePaginateLabels,
+          lean: true,
+          limit: queryParsed.limit,
+          page: queryParsed.page,
+          populate: {
+            path: 'token',
+            select: {
+              chainId: 1,
+              _id: 1,
+              symbol: 1,
+              decimals: 1,
+              name: 1,
+            },
+          },
+          projection: {
+            token: 1,
+            price: 1,
+            blockNumber: 1,
+            blockTimestamp: 1,
+            blockTimestampIso: 1,
+            _id: 0,
+          },
+        });
 
         return res.json({
-          data: tokenPrices,
+          data: paginationResult,
+          meta: {
+            _query: filterQuery,
+          },
           status: 'ok',
           statusCode: 200,
         });
       } catch (error) {
         return returnServerError({ response: res, error, logger });
       }
-    },
+    }
   );
 
   // Handle all other routes
@@ -466,17 +483,22 @@ const weekIdSchema = z
     },
     {
       message: 'Week date must be a Sunday',
-    },
+    }
   );
 
-const GetGnosisTokenBalanceSnapshotsQuerySchema = z.object({
-  safe: addressSchema.optional().transform((value) => value?.toLowerCase()),
-  week: weekIdSchema.optional(),
+const PaginationQuerySchema = z.object({
   limit: z.coerce.number().optional().default(100),
   page: z.coerce.number().optional().default(1),
 });
 
+const GetGnosisTokenBalanceSnapshotsQuerySchema = z.object({
+  ...PaginationQuerySchema.shape,
+  safe: addressSchema.optional().transform((value) => value?.toLowerCase()),
+  week: weekIdSchema.optional(),
+});
+
 const GetGnosisTokenPriceQuerySchema = z.object({
+  ...PaginationQuerySchema.shape,
   date: z
     .string()
     .refine((value) => dayjs(value).format('YYYY-MM-DD') === value, {
@@ -547,7 +569,7 @@ async function getWeekRewardSnapshotWithFallback({
     const newWeekRewardSnapshotDocument = await createWeekRewardsSnapshotDocument(
       weekCashbackRewardModel,
       week,
-      safeAddress,
+      safeAddress
     );
 
     // Carry over the net usd volume from the previous week if the current week has no transactions
@@ -585,7 +607,7 @@ async function getWeekRewardSnapshotWithFallback({
         owners: safeOwners,
         isOg,
       },
-      gnosisPaySafeAddressModel,
+      gnosisPaySafeAddressModel
     );
 
     // Refresh the document
@@ -597,7 +619,7 @@ async function getWeekRewardSnapshotWithFallback({
 
 async function getSafeAddressDistributions(
   model: ReturnType<typeof createGnosisPayRewardDistributionModel>,
-  safeAddress: Address,
+  safeAddress: Address
 ) {
   return model
     .find<GnosisPayRewardDistributionDocumentFieldsType>({
