@@ -1,5 +1,5 @@
 import { isAddress, isHash } from 'viem';
-import { isValidWeekId } from '../database/weekSnapshot';
+import { isValidWeekId } from '../week-functions';
 
 /**
  * Mongoose schema field for an address.
@@ -30,6 +30,6 @@ export const mongooseSchemaWeekIdField = {
   required: true,
   validate: {
     validator: (value: string) => isValidWeekId(value),
-    message: '{VALUE} is not a valid week ID, must be in YYYY-MM-DD format',
+    message: '{VALUE} is not a valid week ID, must be in YYYY-MM-DD format and a Sunday',
   },
 } as const;

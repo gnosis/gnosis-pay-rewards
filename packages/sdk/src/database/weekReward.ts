@@ -1,7 +1,7 @@
-import { Address } from 'viem';
-import { WeekIdFormatType } from './weekSnapshot';
-import { GnosisPayTransactionFieldsType_Unpopulated } from './spendTransaction';
-import { GnosisTokenBalanceSnapshotDocumentType } from './gnosisTokenBalanceSnapshot';
+import type { Address } from 'viem';
+import type { WeekIdFormatType } from '../week-functions';
+import type { GnosisPayTransactionFieldsType_Unpopulated } from './spendTransaction';
+import type { GnosisTokenBalanceSnapshotDocumentType } from './gnosisTokenBalanceSnapshot';
 
 export type WeekCashbackRewardDocumentFieldsTypeBase<TransactionsFieldType, GnosisTokenBalanceSnapshotFieldType> = {
   _id: `${WeekIdFormatType}/${Address}`; // e.g. 2024-03-01/0x123456789abcdef123456789abcdef123456789ab

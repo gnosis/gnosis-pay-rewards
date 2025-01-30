@@ -1,8 +1,9 @@
 import { ClientSession, Model, Mongoose, Schema } from 'mongoose';
-import { gnosisPayTransactionModelName } from './gnosisPayTransaction.js';
-import { dayjsUtc } from '../dayjs-utc.js';
-import { WeekIdFormatType, WeekSnapshotDocumentFieldsType, toWeekId } from '../database/weekSnapshot';
 import { isHash } from 'viem';
+
+import { gnosisPayTransactionModelName } from './gnosisPayTransaction.js';
+import { WeekSnapshotDocumentFieldsType } from '../database/weekSnapshot.js';
+import { WeekIdFormatType, getCurrentWeekId, toWeekId } from '../week-functions';
 
 export const weekDataSchema = new Schema<WeekSnapshotDocumentFieldsType>(
   {
@@ -79,6 +80,6 @@ export async function getCurrentWeekMetricsSnapshotDocument(
 ) {
   return createWeekMetricsSnapshotDocument({
     weekMetricsSnapshotModel,
-    unixTimestamp: dayjsUtc.utc().unix(),
+    weekId: getCurrentWeekId(),
   });
 }

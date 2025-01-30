@@ -2,7 +2,7 @@ import { Model, Mongoose, Schema } from 'mongoose';
 
 import { mongooseSchemaAddressField, mongooseSchemaHashField } from './sharedSchemaFields';
 import { Address, isAddress, isHash } from 'viem';
-import { isValidWeekId, WeekIdFormatType } from '../database/weekSnapshot';
+import { isValidWeekId, WeekIdFormatType } from '../week-functions';
 
 export const gnosisPayRewardDistributionModelName = 'GnosisPayRewardDistribution' as const;
 

@@ -2,8 +2,7 @@
 import { Address, isAddress } from 'viem';
 import { ClientSession, HydratedDocument, Model, Mongoose, Schema } from 'mongoose';
 import { WeekCashbackRewardDocumentFieldsType_Unpopulated } from '../database/weekReward';
-import { WeekIdFormatType, weekIdFormat } from '../database/weekSnapshot';
-import { dayjsUtc } from '../dayjs-utc';
+import { WeekIdFormatType, weekIdFormat } from '../week-functions';
 import { gnosisTokenBalanceSnapshotModelName } from './gnosisTokenBalanceSnapshot';
 import { mongooseSchemaAddressField } from './sharedSchemaFields';
 import { gnosisPaySafeAddressModelName } from './gnosisPaySafeAddress';
@@ -86,16 +85,6 @@ export function createWeekCashbackRewardDocumentId(
   address: Address,
 ): `${WeekIdFormatType}/${Address}` {
   return `${week}/${address.toLowerCase() as Address}`;
-}
-
-/**
- * Get the current week id
- * @returns e.g. 2024-03-01
- */
-export function getCurrentWeekId() {
-  const now = dayjsUtc.utc();
-  const isoWeek = now.format(weekIdFormat);
-  return isoWeek;
 }
 
 export type WeekCashbackRewardModelType = Model<WeekCashbackRewardDocumentFieldsType_Unpopulated>;

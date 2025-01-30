@@ -1,5 +1,5 @@
 import { Model, Mongoose, Schema } from 'mongoose';
-import { toWeekId, WeekIdFormatType } from '../database/weekSnapshot';
+import { toWeekId, type WeekIdFormatType } from '../week-functions';
 import { mongooseSchemaWeekIdField } from './sharedSchemaFields';
 
 export const blockModelName = 'Block' as const;
