@@ -1,7 +1,6 @@
 import {
   GnosisPayRewardDistributionDocumentFieldsType,
   GnosisPayRewardDistributionModelType,
-  toGnosisPayRewardDistributionDocumentId,
   WeekCashbackRewardModelType,
 } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
 import {
@@ -58,7 +57,7 @@ export async function processGnosisPayRewardDistributionLog({
       client,
     });
 
-    const documentId = toGnosisPayRewardDistributionDocumentId(transactionHash, safeAddress);
+    const documentId = gnosisPayRewardDistributionModel.createDocumentId(transactionHash, safeAddress, log.logIndex);
     // Get the last week id
     // Distributions are for the last week happen on the current week, so we roll back one week
     const lastWeekId = toWeekId(block.timestamp, 1);
