@@ -246,14 +246,14 @@ export function addHttpRoutes({
           {
             safe: safeAddress,
           },
-          { estimatedReward: 1 }
+          { estimatedReward: 1 },
         )
         .sort({ week: -1 })
         .lean();
 
       const estimatedRewards = weeklyRewardSnapshotDocuments.reduce(
         (acc, { estimatedReward }) => estimatedReward + acc,
-        0
+        0,
       );
       // pending rewards are the rewards that are pending to be claimed
       const pendingRewards = estimatedRewards - earnedRewards;
@@ -364,7 +364,7 @@ export function addHttpRoutes({
       } catch (error) {
         return returnServerError({ response: res, error, logger });
       }
-    }
+    },
   );
 
   // eslint-disable-next-line
@@ -422,7 +422,7 @@ export function addHttpRoutes({
       } catch (error) {
         return returnServerError({ response: res, error, logger });
       }
-    }
+    },
   );
 
   // Handle all other routes
@@ -483,7 +483,7 @@ const weekIdSchema = z
     },
     {
       message: 'Week date must be a Sunday',
-    }
+    },
   );
 
 const PaginationQuerySchema = z.object({
@@ -569,7 +569,7 @@ async function getWeekRewardSnapshotWithFallback({
     const newWeekRewardSnapshotDocument = await createWeekRewardsSnapshotDocument(
       weekCashbackRewardModel,
       week,
-      safeAddress
+      safeAddress,
     );
 
     // Carry over the net usd volume from the previous week if the current week has no transactions
@@ -607,7 +607,7 @@ async function getWeekRewardSnapshotWithFallback({
         owners: safeOwners,
         isOg,
       },
-      gnosisPaySafeAddressModel
+      gnosisPaySafeAddressModel,
     );
 
     // Refresh the document
@@ -619,7 +619,7 @@ async function getWeekRewardSnapshotWithFallback({
 
 async function getSafeAddressDistributions(
   model: ReturnType<typeof createGnosisPayRewardDistributionModel>,
-  safeAddress: Address
+  safeAddress: Address,
 ) {
   return model
     .find<GnosisPayRewardDistributionDocumentFieldsType>({

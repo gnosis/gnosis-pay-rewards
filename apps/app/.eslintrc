@@ -1,9 +1,0 @@
-{
-  "extends": ["next", "prettier", "plugin:@typescript-eslint/recommended"],
-  "ignorePatterns": ["node_modules", "dist", "build", "coverage", "src/**/*.d.ts", "src/**/generated/**/*"],
-  "rules": {
-    "@next/next/no-page-custom-font": "off",
-    "@typescript-eslint/no-empty-function": "off",
-    "@typescript-eslint/ban-ts-comment": "off"
-  }
-}

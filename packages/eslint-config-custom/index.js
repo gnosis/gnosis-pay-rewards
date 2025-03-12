@@ -1,5 +1,9 @@
+// Import and extract the default property from eslint-config-turbo
+const turboConfig = require('eslint-config-turbo');
+const turboRecommended = turboConfig.default?.extends || [];
+
 module.exports = {
-  extends: ['turbo', 'prettier', 'plugin:@typescript-eslint/recommended'],
+  extends: [...turboRecommended, 'prettier', 'plugin:@typescript-eslint/recommended'],
   parser: '@typescript-eslint/parser',
   parserOptions: {
     sourceType: 'module',

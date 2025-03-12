@@ -28,7 +28,11 @@ export const gnosisPayRewardDistributionSchema = new Schema<GnosisPayRewardDistr
     validate: {
       validator: (value: string) => {
         const [transactionHash, address, transactionLogIndex] = value.split('/');
-        return isHash(transactionHash) && isAddress(address) && (transactionLogIndex === undefined || !isNaN(Number(transactionLogIndex)));
+        return (
+          isHash(transactionHash) &&
+          isAddress(address) &&
+          (transactionLogIndex === undefined || !isNaN(Number(transactionLogIndex)))
+        );
       },
       message: '{VALUE} is not a valid hash. Expected format: transactionHash/address[/transactionLogIndex]',
     },
@@ -64,7 +68,6 @@ gnosisPayRewardDistributionSchema.statics.createDocumentId = function createDocu
   address: Address,
   transactionLogIndex?: number,
 ) {
-
   const parts = [transactionHash, address.toLowerCase()];
   if (transactionLogIndex !== undefined) {
     parts.push(transactionLogIndex.toString());
