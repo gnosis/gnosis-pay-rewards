@@ -1,4 +1,4 @@
-import { gnosisPayOgNftAddress } from '@karpatkey/gnosis-pay-rewards-sdk';
+import { gnosisPayOgNftAddress, gnosisPayOgNftV2Address } from '@karpatkey/gnosis-pay-rewards-sdk';
 import { zeroAddress } from 'viem';
 import retry from 'async-retry';
 import { buildRetryOptions, erc721TransferEventAbiItem, GnosisPayGetLogsParams } from './commons.js';
@@ -19,7 +19,7 @@ export async function getGnosisPayClaimOgNftLogs({
         args: {
           from: zeroAddress,
         },
-        address: gnosisPayOgNftAddress,
+        address: [gnosisPayOgNftAddress, gnosisPayOgNftV2Address],
         strict: false,
       }),
     buildRetryOptions({ name: 'getGnosisPayClaimOgNftLogs', verbose, retries }),

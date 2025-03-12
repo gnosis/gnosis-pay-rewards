@@ -34,3 +34,8 @@ export const gnosisPayStartBlock = 35_536_000n;
  * Gnosis Pay OG NFT address
  */
 export const gnosisPayOgNftAddress = '0x88997988a6A5aAF29BA973d298D276FE75fb69ab' as const;
+
+/**
+ * Gnosis Pay OG NFT V2 address.
+ */
+export const gnosisPayOgNftV2Address = '0x106c07DD0e77eF4D9C0c612e70E843afAA8E5699' as const;
