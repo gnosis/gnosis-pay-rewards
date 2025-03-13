@@ -1,6 +1,6 @@
 import { createLogger, transports, format, Logger } from 'winston';
 import 'winston-mongodb';
-import { MONGODB_URI } from './config/env.js';
+import { LOGGER_MONGODB_TRANSPORT_URI, LOGGER_MONGODB_TRANSPORT_ENABLED } from './config/env.js';
 
 let loggerInstance: Logger | null = null;
 
@@ -26,18 +26,22 @@ export async function getLogger() {
       debug: 4,
     },
     transports: [
-      // write errors to console too
       new transports.Console({
         format: consoleFormat,
       }),
+    ],
+  });
+
+  if (LOGGER_MONGODB_TRANSPORT_ENABLED === true && LOGGER_MONGODB_TRANSPORT_URI !== undefined) {
+    loggerInstance.add(
       new transports.MongoDB({
-        db: MONGODB_URI,
+        db: LOGGER_MONGODB_TRANSPORT_URI,
         collection: 'logs',
         tryReconnect: true,
         format: format.combine(jsonFormat, format.timestamp()),
       }),
-    ],
-  });
+    );
+  }
 
   return loggerInstance;
 }

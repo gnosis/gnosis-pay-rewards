@@ -34,6 +34,37 @@ import { isGnosisPaySafeAddress } from './gp/isGnosisPaySafeAddress.js';
 import { hasGnosisPayOgNft } from './gp/hasGnosisPayOgNft.js';
 import { dayjsUtc as dayjs } from './dayjs-utc.js';
 
+// Simple in-memory cache implementation
+type CacheEntry<T> = {
+  data: T;
+  expiresAt: number;
+};
+
+class InMemoryCache {
+  private cache: Map<string, CacheEntry<any>> = new Map();
+
+  set<T>(key: string, data: T, ttlMs: number): void {
+    const expiresAt = Date.now() + ttlMs;
+    this.cache.set(key, { data, expiresAt });
+  }
+
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      return null;
+    }
+
+    return entry.data as T;
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
 export function addHttpRoutes({
   expressApp,
   mongooseModels,
@@ -65,6 +96,15 @@ export function addHttpRoutes({
     gnosisPayTokenPriceModel,
   } = mongooseModels;
 
+  // Initialize in-memory cache
+  const cache = new InMemoryCache();
+
+  // Cache durations in milliseconds
+  const CACHE_DURATION = {
+    OLDER_WEEK: 24 * 60 * 60 * 1000, // 24 hours
+    CURRENT_WEEK: 30 * 60 * 1000, // 30 minutes
+  };
+
   expressApp.get<'/'>('/', (_, res) => {
     return res.send({
       status: 'ok',
@@ -93,6 +133,42 @@ export function addHttpRoutes({
   expressApp.get<'/week-snapshots/:weekId'>('/week-snapshots/:weekId', async (req, res) => {
     try {
       const weekId = weekIdSchema.parse(req.params.weekId) as WeekIdFormatType;
+      const cacheKey = `week-snapshots-${weekId}`;
+
+      // Define response type
+      type WeekSnapshotResponse = {
+        data: any;
+        status: string;
+        statusCode: number;
+        _query: any;
+        cache?: {
+          hit: boolean;
+          expiresAt: number;
+        };
+      };
+
+      // Check if response is in cache
+      const cachedResponse = cache.get<WeekSnapshotResponse>(cacheKey);
+
+      if (cachedResponse) {
+        // Set cache headers
+        const timeToExpiry = Math.max(0, Math.floor((cachedResponse.cache?.expiresAt || 0) - Date.now()) / 1000);
+        res.set('Cache-Control', `public, max-age=${timeToExpiry}`);
+        res.set('Expires', new Date(cachedResponse.cache?.expiresAt || Date.now()).toUTCString());
+
+        // Update the cached response to indicate it's a cache hit
+        const responseWithCacheHit: WeekSnapshotResponse = {
+          ...cachedResponse,
+          cache: {
+            ...(cachedResponse.cache || { expiresAt: Date.now() }),
+            hit: true,
+          },
+        };
+
+        return res.json(responseWithCacheHit);
+      }
+
+      // If not in cache, fetch from database
       const _query = { week: weekId };
       const weekSafeSnapshot = await weekCashbackRewardModel
         .find(_query)
@@ -112,12 +188,33 @@ export function addHttpRoutes({
         .populate<{ safe: { isOg: boolean; _id: Address } }>('safe', { isOg: 1 })
         .lean();
 
-      return res.json({
+      // Determine if weekId is current week or older
+      const currentWeekId = toWeekId(dayjs.utc().unix());
+      const isCurrentWeek = weekId === currentWeekId;
+
+      // Set cache duration based on whether it's the current week or older
+      const cacheDuration = isCurrentWeek ? CACHE_DURATION.CURRENT_WEEK : CACHE_DURATION.OLDER_WEEK;
+      const expiresAt = Date.now() + cacheDuration;
+
+      const response: WeekSnapshotResponse = {
         data: weekSafeSnapshot,
         status: 'ok',
         statusCode: 200,
         _query,
-      });
+        cache: {
+          hit: false,
+          expiresAt: expiresAt,
+        },
+      };
+
+      // Cache the response
+      cache.set(cacheKey, response, cacheDuration);
+
+      // Set cache headers
+      res.set('Cache-Control', `public, max-age=${Math.floor(cacheDuration / 1000)}`);
+      res.set('Expires', new Date(expiresAt).toUTCString());
+
+      return res.json(response);
     } catch (error) {
       return returnServerError({ response: res, error, logger });
     }
