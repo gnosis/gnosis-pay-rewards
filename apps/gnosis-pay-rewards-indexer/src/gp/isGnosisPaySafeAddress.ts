@@ -5,6 +5,41 @@ import { gnosis } from 'viem/chains';
 import { gnosisPaySafeAvatarFunctionAbiItem } from './commons.js';
 import { getGnosisPaySafeModules } from './getGnosisPaySafeOwners.js';
 
+type IsGnosisPaySafeAddressReturnType_Database = {
+  isGnosisPaySafe: true;
+  source: 'database';
+  error: null;
+};
+
+type IsGnosisPaySafeAddressReturnType_Chain = {
+  isGnosisPaySafe: boolean;
+  source: 'chain';
+  error: Error | null;
+  safeModules: Address[] | null;
+};
+
+type IsGnosisPaySafeAddressReturnType =
+  | IsGnosisPaySafeAddressReturnType_Database
+  | IsGnosisPaySafeAddressReturnType_Chain;
+
+type Code =
+  | 'HAS_NO_BYTECODE'
+  | 'HAS_NO_GNOSIS_PAY_SAFE_MODULES'
+  | 'IS_NOT_GNOSIS_PAY_SAFE_ADDRESS'
+  | 'MODULE_AVATAR_NOT_EQUAL_TO_ADDRESS'
+  | 'CONTRACT_FUNCTION_ZERO_DATA_ERROR'
+  | 'UNKNOWN_ERROR';
+
+class IsNotGnosisPaySafeAddressError extends Error {
+  errorCode: Code;
+  name = 'IsNotGnosisPaySafeAddressError';
+
+  constructor(address: Address, errorCode: Code) {
+    super(`Address ${address} is not a Gnosis Pay Safe address`, { cause: errorCode });
+    this.errorCode = errorCode;
+  }
+}
+
 /**
  * Check if an address is a Gnosis Safe address.
  * Warning: This function is not 100% accurate.
@@ -26,23 +61,30 @@ export async function isGnosisPaySafeAddress({
    * The mongoose model to use to check if the address is a Gnosis Safe address in the database
    */
   gnosisPaySafeAddressModel: GnosisPaySafeAddressModelType;
-}): Promise<{
-  isGnosisPaySafe: boolean;
-  source: 'chain' | 'database';
-}> {
+}): Promise<IsGnosisPaySafeAddressReturnType> {
   // Priority 1: Check if the address is a Gnosis Safe address in the database
   const safeAddressEntity = await gnosisPaySafeAddressModel.exists({
     address: address.toLowerCase(),
   });
 
+  // A Record exists in the database means it's a Gnosis Safe address
   if (safeAddressEntity !== null) {
-    return {
+    const returnValueDatabase: IsGnosisPaySafeAddressReturnType_Database = {
       isGnosisPaySafe: true,
       source: 'database',
+      error: null,
     };
+
+    return returnValueDatabase;
   }
 
-  let isGnosisPaySafe = false;
+  // After the database check, we can be sure that the address is not a Gnosis Safe address
+  const returnValueChain: IsGnosisPaySafeAddressReturnType_Chain = {
+    isGnosisPaySafe: false,
+    source: 'chain',
+    error: null,
+    safeModules: null,
+  };
 
   const contractBytecode = await client.getBytecode({
     address,
@@ -50,10 +92,8 @@ export async function isGnosisPaySafeAddress({
 
   // Not bytecode means it's not a contract
   if (!contractBytecode) {
-    return {
-      isGnosisPaySafe,
-      source: 'chain',
-    };
+    returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'HAS_NO_BYTECODE');
+    return returnValueChain;
   }
 
   try {
@@ -63,6 +103,12 @@ export async function isGnosisPaySafeAddress({
       safeAddress: address,
     });
 
+    if (safeModules.length === 0) {
+      returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'HAS_NO_GNOSIS_PAY_SAFE_MODULES');
+      return returnValueChain;
+    }
+
+    // First module is the delay module
     // First module is the delay module
     const [delayModuleBytecode, rolesModuleBytecode] = await Promise.all([
       client.getBytecode({
@@ -90,21 +136,22 @@ export async function isGnosisPaySafeAddress({
       const isRolesModuleAvatarEqualSafeAddress = isAddressEqual(await rolesModuleContract.read.avatar(), address);
 
       if (isDelayModuleAvatarEqualSafeAddress && isRolesModuleAvatarEqualSafeAddress) {
-        isGnosisPaySafe = true;
+        returnValueChain.isGnosisPaySafe = true;
+      } else {
+        returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'MODULE_AVATAR_NOT_EQUAL_TO_ADDRESS');
+        return returnValueChain;
       }
     }
   } catch (e) {
     if (e instanceof ContractFunctionZeroDataError) {
       // Not a Gnosis Safe
-      return {
-        isGnosisPaySafe: false,
-        source: 'chain',
-      };
+      returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'CONTRACT_FUNCTION_ZERO_DATA_ERROR');
+      return returnValueChain;
     }
+
+    returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'UNKNOWN_ERROR');
+    return returnValueChain;
   }
 
-  return {
-    isGnosisPaySafe,
-    source: 'chain',
-  };
+  return returnValueChain;
 }
