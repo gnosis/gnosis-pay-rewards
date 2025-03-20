@@ -33,7 +33,7 @@ export function toWeekId(unixTimestamp: number | bigint, rollbackWeeks = 0): Wee
  * @param weekId - The week ID
  * @returns True if the week ID is valid, false otherwise
  */
-export function isValidWeekId(weekIdish: string): boolean {
+export function isValidWeekId(weekIdish: string): weekIdish is WeekIdFormatType {
   // Must be a string in YYYY-MM-DD format
   const isCorrectFormat = weekIdish.match(WEEK_ID_REGEX_STRICT) !== null;
 

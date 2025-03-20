@@ -335,7 +335,9 @@ export function addHttpRoutes({
         });
       }
 
-      const distributionDocuments = await getSafeAddressDistributions(gnosisPayRewardDistributionModel, safeAddress);
+      const distributionDocuments = await getRewardsDistributions(gnosisPayRewardDistributionModel, {
+        safe: safeAddress,
+      });
       const earnedRewards = distributionDocuments.reduce((acc, dist) => dist.amount + acc, 0);
 
       const weeklyRewardSnapshotDocuments = await weekCashbackRewardModel
@@ -379,23 +381,26 @@ export function addHttpRoutes({
     }
   });
 
-  expressApp.get<'/distributions/:safeAddress'>('/distributions/:safeAddress', async (req, res) => {
+  expressApp.get<'/distributions'>('/distributions', async (req, res) => {
     try {
-      const safeAddress = addressSchema.parse(req.params.safeAddress).toLowerCase() as Address;
-      const transactions = await getSafeAddressDistributions(gnosisPayRewardDistributionModel, safeAddress);
-      const totalRewards = transactions.reduce((acc, dist) => dist.amount + acc, 0);
+      const queryParsed = z
+        .object({
+          safe: addressSchema.optional(),
+          week: weekIdSchema.optional(),
+        })
+        .parse(req.query);
+
+      const items = await getRewardsDistributions(gnosisPayRewardDistributionModel, queryParsed);
+      const itemsCount = items.length;
 
       return res.json({
         data: {
-          safe: safeAddress,
-          totalRewards,
-          transactions,
+          itemsCount,
+          items,
         },
         status: 'ok',
         statusCode: 200,
-        _query: {
-          safe: safeAddress,
-        },
+        _query: queryParsed,
       });
     } catch (error) {
       return returnServerError({ response: res, error, logger });
@@ -714,15 +719,24 @@ async function getWeekRewardSnapshotWithFallback({
   return weekRewardSnapshotDocument;
 }
 
-async function getSafeAddressDistributions(
+async function getRewardsDistributions(
   model: ReturnType<typeof createGnosisPayRewardDistributionModel>,
-  safeAddress: Address,
+  params: {
+    safe?: Address;
+    week?: WeekIdFormatType;
+  }
 ) {
-  return model
-    .find<GnosisPayRewardDistributionDocumentFieldsType>({
-      safe: safeAddress.toLowerCase(),
-    })
-    .sort({ blockNumber: -1 });
+  const filterQuery: FilterQuery<GnosisPayRewardDistributionDocumentFieldsType> = {};
+
+  if (params.safe) {
+    filterQuery.safe = params.safe.toLowerCase();
+  }
+
+  if (params.week) {
+    filterQuery.week = params.week;
+  }
+
+  return model.find<GnosisPayRewardDistributionDocumentFieldsType>(filterQuery).sort({ blockNumber: -1 }).lean();
 }
 
 const mongoosePaginateLabels: PaginateOptions['customLabels'] = {
