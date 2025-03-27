@@ -14,6 +14,15 @@ const FOUR_WEEK_VOLUME_THRESHOLD = {
 };
 
 /**
+ * The weekly USD volume threshold for each currency.
+ * These are derived by dividing the four-week thresholds by 4.
+ * A maximum of EUR 5,000, USD 5,500, or GBP 4,500 will be eligible to accrue rewards per week for every user.
+ */
+const WEEKLY_VOLUME_THRESHOLD = Object.fromEntries(
+  Object.entries(FOUR_WEEK_VOLUME_THRESHOLD).map(([address, threshold]) => [address, threshold / 4]),
+);
+
+/**
  * Get the four week volume threshold for a given safe token address.
  * @param safeToken - The safe token address to get the threshold for.
  * @returns The four week volume threshold for the given safe token address.
@@ -22,6 +31,21 @@ const FOUR_WEEK_VOLUME_THRESHOLD = {
 export function getFourWeekVolumeThreshold(safeToken: Address): number {
   const safeTokenAddress = getAddress(safeToken);
   const volumeThreshold = FOUR_WEEK_VOLUME_THRESHOLD[safeTokenAddress];
+  if (volumeThreshold === undefined) {
+    throw new Error(`Invalid safe token address: ${safeTokenAddress}`);
+  }
+  return volumeThreshold;
+}
+
+/**
+ * Get the weekly volume threshold for a given safe token address.
+ * @param safeToken - The safe token address to get the threshold for.
+ * @returns The weekly volume threshold for the given safe token address.
+ * The threshold is in the same currency as the safe token, and must be converted to USD before using it in the reward calculation.
+ */
+export function getWeeklyVolumeThreshold(safeToken: Address): number {
+  const safeTokenAddress = getAddress(safeToken);
+  const volumeThreshold = WEEKLY_VOLUME_THRESHOLD[safeTokenAddress];
   if (volumeThreshold === undefined) {
     throw new Error(`Invalid safe token address: ${safeTokenAddress}`);
   }
@@ -95,7 +119,47 @@ export function calculateEligibleUsdVolume({
   };
 }
 
-type CalculateWeekRewardCommonParams = CalculateEligibleUsdVolumeParamsType & {
+type CalculateEligibleWeeklyUsdVolumeParamsType = {
+  /**
+   * The net USD volume for the week
+   */
+  weekUsdVolume: number;
+  /**
+   * The weekly USD volume threshold for the safe token.
+   * Use `getWeeklyVolumeThreshold` and convert that to USD before passing it in here.
+   */
+  weeklyUsdVolumeThreshold: number;
+};
+
+/**
+ * Calculate the eligible USD volume using a weekly cap.
+ * This simply caps the week's volume at the weekly threshold.
+ * @param weekUsdVolume - The net USD volume for the week
+ * @param weeklyUsdVolumeThreshold - The weekly USD volume threshold for the safe token.
+ * Use `getWeeklyVolumeThreshold` and convert that to USD before passing it in here.
+ * @throws if the weekly volume threshold is not greater than 0
+ */
+export function calculateEligibleWeeklyUsdVolume({
+  weekUsdVolume,
+  weeklyUsdVolumeThreshold,
+}: CalculateEligibleWeeklyUsdVolumeParamsType): CalculateEligibleUsdVolumeReturnType {
+  if (weeklyUsdVolumeThreshold <= 0) {
+    throw new Error('weeklyUsdVolumeThreshold must be greater than 0');
+  }
+
+  // Calculate eligible volume - capped at weekly threshold
+  const eligibleUsdVolume = Math.min(weekUsdVolume, weeklyUsdVolumeThreshold);
+
+  // Calculate remainder - if we're under threshold, there's still room, otherwise 0
+  const remainderVolumeToThreshold = Math.max(weeklyUsdVolumeThreshold - weekUsdVolume, 0);
+
+  return {
+    eligibleUsdVolume,
+    remainderVolumeToThreshold,
+  };
+}
+
+type CalculateWeekRewardCommonParamsType = {
   /**
    * The GNO USD price reference to use when calculating rewards
    */
@@ -129,21 +193,15 @@ export type CalculateWeekRewardReturnType = CalculateEligibleUsdVolumeReturnType
    */
   rewardAmountPercentageTier: number;
 };
+
+type CalculateWeekRewardParamsType = CalculateEligibleUsdVolumeParamsType & CalculateWeekRewardCommonParamsType;
+
 /**
  * Calculate the rewards for a given week given the net USD volume and GNO balance.
  * Negative USD volumes are ignored as they don't contribute to the rewards.
  */
-export function calculateWeekRewardAmount({
-  gnoUsdPrice,
-  isOgNftHolder,
-  gnoBalance,
-  weekUsdVolume,
-  fourWeeksUsdVolume,
-  fourWeeksUsdVolumeThreshold,
-}: CalculateWeekRewardCommonParams): CalculateWeekRewardReturnType {
-  if (gnoUsdPrice <= 0) {
-    throw new Error('gnoUsdPrice must be greater than 0');
-  }
+export function calculateWeekRewardAmount(params: CalculateWeekRewardParamsType): CalculateWeekRewardReturnType {
+  const { weekUsdVolume, fourWeeksUsdVolume, fourWeeksUsdVolumeThreshold } = params;
 
   const { eligibleUsdVolume, remainderVolumeToThreshold } = calculateEligibleUsdVolume({
     weekUsdVolume,
@@ -151,6 +209,14 @@ export function calculateWeekRewardAmount({
     fourWeeksUsdVolumeThreshold,
   });
 
+  return toReturnValue({
+    ...params,
+    eligibleUsdVolume,
+    remainderVolumeToThreshold,
+  });
+}
+
+function calculateRewardAmountPercentageTier(gnoBalance: number, isOgNftHolder: boolean): number {
   // Calculate base reward percentage based on GNO holdings
   let rewardAmountPercentageTier = 0;
   if (gnoBalance >= 100) {
@@ -170,6 +236,38 @@ export function calculateWeekRewardAmount({
     rewardAmountPercentageTier += 1;
   }
 
+  return rewardAmountPercentageTier;
+}
+
+type CalculateWeeklyRewardParamsType = CalculateEligibleWeeklyUsdVolumeParamsType & CalculateWeekRewardCommonParamsType;
+
+/**
+ * Calculate the rewards for a given week using a weekly cap approach.
+ * This ignores the four-week threshold and only considers the weekly cap.
+ * Negative USD volumes are ignored as they don't contribute to the rewards.
+ */
+export function calculateWeeklyRewardAmount(params: CalculateWeeklyRewardParamsType): CalculateWeekRewardReturnType {
+  const { weekUsdVolume, weeklyUsdVolumeThreshold } = params;
+
+  const { eligibleUsdVolume, remainderVolumeToThreshold } = calculateEligibleWeeklyUsdVolume({
+    weekUsdVolume,
+    weeklyUsdVolumeThreshold,
+  });
+
+  return toReturnValue({
+    ...params,
+    eligibleUsdVolume,
+    remainderVolumeToThreshold,
+  });
+}
+
+function toReturnValue(
+  params: CalculateWeekRewardCommonParamsType & CalculateEligibleUsdVolumeReturnType,
+): CalculateWeekRewardReturnType {
+  const { gnoUsdPrice, isOgNftHolder, gnoBalance, eligibleUsdVolume, remainderVolumeToThreshold } = params;
+
+  validateParams(params);
+  const rewardAmountPercentageTier = calculateRewardAmountPercentageTier(gnoBalance, isOgNftHolder);
   // Calculate GNO rewards, then convert to USD
   const rewardAmountGno = ((rewardAmountPercentageTier / 100) * eligibleUsdVolume) / gnoUsdPrice;
   const rewardAmountUsd = rewardAmountGno * gnoUsdPrice;
@@ -185,4 +283,10 @@ export function calculateWeekRewardAmount({
     eligibleUsdVolume,
     remainderVolumeToThreshold,
   };
+}
+
+function validateParams(params: { gnoUsdPrice: number }): void {
+  if (params.gnoUsdPrice <= 0) {
+    throw new Error('gnoUsdPrice must be greater than 0');
+  }
 }

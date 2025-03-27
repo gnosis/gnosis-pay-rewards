@@ -4,7 +4,18 @@ import {
   calculateEligibleUsdVolume,
   calculateWeekRewardAmount,
   CalculateWeekRewardReturnType,
+  calculateWeeklyRewardAmount,
+  getWeeklyVolumeThreshold,
+  getFourWeekVolumeThreshold,
 } from './calculateWeekRewardAmount';
+import {
+  circleUsdcToken,
+  moneriumEureToken,
+  moneriumGbpToken,
+  gnosisPayTokens,
+  usdcBridgeToken,
+} from './gnoisPayTokens';
+import { Address, getAddress } from 'viem';
 
 describe('calculateEligibleUsdVolume', () => {
   test('custom cases', () => {
@@ -235,5 +246,80 @@ describe('calculateWeekRewardAmount', () => {
       console.log(testName, result);
       expect(result).toMatchObject(expected);
     });
+  });
+});
+
+describe('calculateWeeklyRewardAmount', () => {
+  test('custom cases', () => {
+    const initial: Parameters<typeof calculateWeeklyRewardAmount>[0] = {
+      gnoUsdPrice: 100,
+      weeklyUsdVolumeThreshold: 5000,
+      weekUsdVolume: 1000,
+      gnoBalance: 1,
+      isOgNftHolder: false,
+    };
+
+    const result = calculateWeeklyRewardAmount(initial);
+    result.rewardAmountUsd;
+    expect(result).toMatchObject({
+      rewardAmountPercentage: 2,
+      eligibleUsdVolume: 1000,
+      remainderVolumeToThreshold: 4000,
+      rewardAmountUsd: 20,
+      rewardAmountGno: 0.2,
+    });
+  });
+
+  test('above weekly threshold', () => {
+    const result = calculateWeeklyRewardAmount({
+      gnoUsdPrice: 100,
+      weeklyUsdVolumeThreshold: 5000,
+      weekUsdVolume: 8000,
+      gnoBalance: 1,
+      isOgNftHolder: false,
+    });
+
+    expect(result).toMatchObject({
+      rewardAmountPercentage: 2,
+      eligibleUsdVolume: 5000,
+      remainderVolumeToThreshold: 0,
+      rewardAmountUsd: 100,
+      rewardAmountGno: 1,
+    });
+  });
+});
+
+describe('thresholds', () => {
+  const FOUR_WEEK_VOLUME_THRESHOLD = {
+    [getAddress(circleUsdcToken.address)]: 22_000,
+    [getAddress(usdcBridgeToken.address)]: 22_000,
+    [getAddress(moneriumGbpToken.address)]: 18_000,
+    [getAddress(moneriumEureToken.address)]: 20_000,
+  };
+
+  const WEEKLY_VOLUME_THRESHOLD = Object.fromEntries(
+    Object.entries(FOUR_WEEK_VOLUME_THRESHOLD).map(([address, threshold]) => [address, threshold / 4]),
+  );
+
+  test('four week volume threshold matches', () => {
+    for (const { address } of gnosisPayTokens) {
+      const threshold = getFourWeekVolumeThreshold(address as Address);
+      expect(threshold).toBe(FOUR_WEEK_VOLUME_THRESHOLD[address]);
+    }
+  });
+
+  test('weekly volume threshold matches', () => {
+    for (const { address } of gnosisPayTokens) {
+      const threshold = getWeeklyVolumeThreshold(address as Address);
+      expect(threshold).toBe(WEEKLY_VOLUME_THRESHOLD[address]);
+    }
+  });
+
+  test('weekly volume threshold is 1/4 of four week volume threshold', () => {
+    for (const { address } of gnosisPayTokens) {
+      const weeklyThreshold = getWeeklyVolumeThreshold(address as Address);
+      const fourWeekThreshold = getFourWeekVolumeThreshold(address as Address);
+      expect(weeklyThreshold).toBe(fourWeekThreshold / 4);
+    }
   });
 });
