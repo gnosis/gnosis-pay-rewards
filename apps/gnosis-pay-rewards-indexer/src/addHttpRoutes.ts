@@ -31,7 +31,7 @@ import { z, ZodError } from 'zod';
 import { takeGnosisTokenBalanceSnapshot } from './process/processGnosisTokenTransferLog.js';
 import { getGnosisPaySafeOwners } from './gp/getGnosisPaySafeOwners.js';
 import { isGnosisPaySafeAddress } from './gp/isGnosisPaySafeAddress.js';
-import { hasGnosisPayOgNft } from './gp/hasGnosisPayOgNft.js';
+import { hasGnosisPayOgNft, hasGnosisPayOgNftV2 } from './gp/hasGnosisPayOgNft.js';
 import { dayjsUtc as dayjs } from './dayjs-utc.js';
 
 // Simple in-memory cache implementation
@@ -700,7 +700,9 @@ async function getWeekRewardSnapshotWithFallback({
     }
 
     // Find the OG NFT status
-    const isOg = (await hasGnosisPayOgNft(client, safeOwners)).some(Boolean);
+    const isOg = [await hasGnosisPayOgNft(client, safeOwners), await hasGnosisPayOgNftV2(client, [safeAddress])].some(
+      (has) => has.some((addr) => addr === true),
+    );
 
     // Create a new GnosisPaySafeAddressDocument
     await createGnosisPaySafeAddressDocument(
@@ -724,7 +726,7 @@ async function getRewardsDistributions(
   params: {
     safe?: Address;
     week?: WeekIdFormatType;
-  }
+  },
 ) {
   const filterQuery: FilterQuery<GnosisPayRewardDistributionDocumentFieldsType> = {};
 

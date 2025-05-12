@@ -1,4 +1,4 @@
-import { gnosisPayOgNftAddress } from '@karpatkey/gnosis-pay-rewards-sdk';
+import { gnosisPayOgNftAddress, gnosisPayOgNftV2Address } from '@karpatkey/gnosis-pay-rewards-sdk';
 import { Address, PublicClient, Transport, erc721Abi } from 'viem';
 import { gnosis } from 'viem/chains';
 
@@ -25,4 +25,27 @@ export async function hasGnosisPayOgNft(
   });
 
   return returnValue;
+}
+
+export async function hasGnosisPayOgNftV2(
+  client: PublicClient<Transport, typeof gnosis>,
+  safeAddresses: Address[],
+): Promise<boolean[]> {
+  const mcResult = await client.multicall({
+    allowFailure: false,
+    contracts: safeAddresses.map((address) => ({
+      abi: erc721Abi,
+      address: gnosisPayOgNftV2Address,
+      functionName: 'balanceOf',
+      args: [address],
+    })),
+  });
+
+  return mcResult.map((result) => {
+    if (typeof result === 'bigint' && result > 0n) {
+      return true;
+    }
+
+    return false;
+  });
 }

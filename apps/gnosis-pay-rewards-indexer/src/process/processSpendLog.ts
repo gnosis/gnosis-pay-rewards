@@ -28,7 +28,7 @@ import { getGnosisPaySpendLogs } from '../gp/getGnosisPaySpendLogs.js';
 import { getBlockByNumber } from './actions.js';
 import { getGnosisPaySafeAddressFromModule } from '../gp/getGnosisPaySafeAddressFromModule.js';
 import { getGnosisPayRefundLogs } from '../gp/getGnosisPayRefundLogs.js';
-import { hasGnosisPayOgNft } from '../gp/hasGnosisPayOgNft.js';
+import { hasGnosisPayOgNft, hasGnosisPayOgNftV2 } from '../gp/hasGnosisPayOgNft.js';
 import { getGnosisPaySafeOwners as getGnosisPaySafeOwnersCore } from '../gp/getGnosisPaySafeOwners.js';
 import { dayjsUtc as dayjs } from '../dayjs-utc.js';
 import { MongooseConfiguredModels, ProcessLogFnDataType, ProcessLogFunctionParams } from './types.js';
@@ -77,9 +77,10 @@ export async function processSpendLog({
       blockNumber,
     });
 
-    const safeHasOgNft = await hasGnosisPayOgNft(client, safeOwners).then((hasArray) =>
-      hasArray.some((addr) => addr === true),
-    );
+    const safeHasOgNft = [
+      await hasGnosisPayOgNft(client, safeOwners),
+      await hasGnosisPayOgNftV2(client, [safeAddress]),
+    ].some((has) => has.some((addr) => addr === true));
 
     const gnosisPaySafeGnoTokenBalance = await getTokenBalanceOf({
       address: safeAddress,
@@ -184,9 +185,10 @@ export async function processRefundLog({
       blockNumber,
     });
 
-    const safeHasOgNft = await hasGnosisPayOgNft(client, safeOwners).then((hasArray) =>
-      hasArray.some((addr) => addr === true),
-    );
+    const safeHasOgNft = [
+      await hasGnosisPayOgNft(client, safeOwners),
+      await hasGnosisPayOgNftV2(client, [safeAddress]),
+    ].some((has) => has.some((addr) => addr === true));
 
     const gnosisPaySafeGnoTokenBalance = await getTokenBalanceOf({
       address: safeAddress,
