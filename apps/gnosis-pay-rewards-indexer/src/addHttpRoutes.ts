@@ -65,6 +65,58 @@ class InMemoryCache {
   }
 }
 
+// Generic cache wrapper function
+async function withCache<T extends { cache?: { hit: boolean; expiresAt: number } }>(
+  cache: InMemoryCache,
+  cacheKey: string,
+  cacheDuration: number,
+  res: Response,
+  dataFetcher: () => Promise<T>,
+): Promise<T> {
+  // Check if response is in cache
+  const cachedResponse = cache.get<T>(cacheKey);
+
+  if (cachedResponse) {
+    // Set cache headers
+    const timeToExpiry = Math.max(0, Math.floor((cachedResponse.cache?.expiresAt || 0) - Date.now()) / 1000);
+    res.set('Cache-Control', `public, max-age=${timeToExpiry}`);
+    res.set('Expires', new Date(cachedResponse.cache?.expiresAt || Date.now()).toUTCString());
+
+    // Update the cached response to indicate it's a cache hit
+    const responseWithCacheHit: T = {
+      ...cachedResponse,
+      cache: {
+        ...(cachedResponse.cache || { expiresAt: Date.now() }),
+        hit: true,
+      },
+    };
+
+    return responseWithCacheHit;
+  }
+
+  // Fetch fresh data
+  const response = await dataFetcher();
+  const expiresAt = Date.now() + cacheDuration;
+
+  // Add cache metadata
+  const responseWithCache: T = {
+    ...response,
+    cache: {
+      hit: false,
+      expiresAt: expiresAt,
+    },
+  };
+
+  // Cache the response
+  cache.set(cacheKey, responseWithCache, cacheDuration);
+
+  // Set cache headers
+  res.set('Cache-Control', `public, max-age=${Math.floor(cacheDuration / 1000)}`);
+  res.set('Expires', new Date(expiresAt).toUTCString());
+
+  return responseWithCache;
+}
+
 export function addHttpRoutes({
   expressApp,
   mongooseModels,
@@ -147,72 +199,38 @@ export function addHttpRoutes({
         };
       };
 
-      // Check if response is in cache
-      const cachedResponse = cache.get<WeekSnapshotResponse>(cacheKey);
-
-      if (cachedResponse) {
-        // Set cache headers
-        const timeToExpiry = Math.max(0, Math.floor((cachedResponse.cache?.expiresAt || 0) - Date.now()) / 1000);
-        res.set('Cache-Control', `public, max-age=${timeToExpiry}`);
-        res.set('Expires', new Date(cachedResponse.cache?.expiresAt || Date.now()).toUTCString());
-
-        // Update the cached response to indicate it's a cache hit
-        const responseWithCacheHit: WeekSnapshotResponse = {
-          ...cachedResponse,
-          cache: {
-            ...(cachedResponse.cache || { expiresAt: Date.now() }),
-            hit: true,
-          },
-        };
-
-        return res.json(responseWithCacheHit);
-      }
-
-      // If not in cache, fetch from database
-      const _query = { week: weekId };
-      const weekSafeSnapshot = await weekCashbackRewardModel
-        .find(_query)
-        .populate<{ transactions: GnosisPayTransactionFieldsType_Unpopulated[] }>('transactions', {
-          amountUsd: 1,
-          amountToken: 1,
-          amount: 1,
-          transactionHash: 1,
-          gnoBalance: 1,
-          type: 1,
-        })
-        .populate<{ gnoBalanceSnapshots: GnosisTokenBalanceSnapshotDocumentType[] }>('gnoBalanceSnapshots', {
-          blockNumber: 1,
-          blockTimestamp: 1,
-          balance: 1,
-        })
-        .populate<{ safe: { isOg: boolean; _id: Address } }>('safe', { isOg: 1 })
-        .lean();
-
       // Determine if weekId is current week or older
       const currentWeekId = toWeekId(dayjs.utc().unix());
       const isCurrentWeek = weekId === currentWeekId;
-
-      // Set cache duration based on whether it's the current week or older
       const cacheDuration = isCurrentWeek ? CACHE_DURATION.CURRENT_WEEK : CACHE_DURATION.OLDER_WEEK;
-      const expiresAt = Date.now() + cacheDuration;
 
-      const response: WeekSnapshotResponse = {
-        data: weekSafeSnapshot,
-        status: 'ok',
-        statusCode: 200,
-        _query,
-        cache: {
-          hit: false,
-          expiresAt: expiresAt,
-        },
-      };
+      const response = await withCache<WeekSnapshotResponse>(cache, cacheKey, cacheDuration, res, async () => {
+        const _query = { week: weekId };
+        const weekSafeSnapshot = await weekCashbackRewardModel
+          .find(_query)
+          .populate<{ transactions: GnosisPayTransactionFieldsType_Unpopulated[] }>('transactions', {
+            amountUsd: 1,
+            amountToken: 1,
+            amount: 1,
+            transactionHash: 1,
+            gnoBalance: 1,
+            type: 1,
+          })
+          .populate<{ gnoBalanceSnapshots: GnosisTokenBalanceSnapshotDocumentType[] }>('gnoBalanceSnapshots', {
+            blockNumber: 1,
+            blockTimestamp: 1,
+            balance: 1,
+          })
+          .populate<{ safe: { isOg: boolean; _id: Address } }>('safe', { isOg: 1 })
+          .lean();
 
-      // Cache the response
-      cache.set(cacheKey, response, cacheDuration);
-
-      // Set cache headers
-      res.set('Cache-Control', `public, max-age=${Math.floor(cacheDuration / 1000)}`);
-      res.set('Expires', new Date(expiresAt).toUTCString());
+        return {
+          data: weekSafeSnapshot,
+          status: 'ok',
+          statusCode: 200,
+          _query,
+        };
+      });
 
       return res.json(response);
     } catch (error) {
@@ -402,6 +420,119 @@ export function addHttpRoutes({
         statusCode: 200,
         _query: queryParsed,
       });
+    } catch (error) {
+      return returnServerError({ response: res, error, logger });
+    }
+  });
+
+  expressApp.get<'/distributions/summary'>('/distributions/summary', async (req, res) => {
+    try {
+      const queryParsed = z
+        .object({
+          safe: addressSchema.optional(),
+        })
+        .parse(req.query);
+
+      // Create cache key based on query parameters
+      const cacheKey = `distributions-summary-${JSON.stringify(queryParsed)}`;
+
+      // Define response type
+      type DistributionsSummaryResponse = {
+        data: {
+          weeks: Array<{ week: string; totalGno: number }>;
+          totalGnoPaidOut: number;
+          totalDistributions: number;
+        };
+        status: string;
+        statusCode: number;
+        _query: any;
+        cache?: {
+          hit: boolean;
+          expiresAt: number;
+        };
+      };
+
+      const response = await withCache<DistributionsSummaryResponse>(
+        cache,
+        cacheKey,
+        CACHE_DURATION.CURRENT_WEEK,
+        res,
+        async () => {
+          const items = await getRewardsDistributions(gnosisPayRewardDistributionModel, queryParsed);
+
+          // Group by week and calculate total GNO per week
+          const weeklyTotals = items.reduce(
+            (acc, item) => {
+              const week = item.week || 'unknown';
+              if (!acc[week]) {
+                acc[week] = 0;
+              }
+              acc[week] += item.amount;
+              return acc;
+            },
+            {} as Record<string, number>,
+          );
+
+          // Calculate total GNO paid out so far
+          const totalGnoPaidOut = items.reduce((sum, item) => sum + item.amount, 0);
+
+          // Find the earliest and latest weeks (excluding 'unknown')
+          const validWeeks = Object.keys(weeklyTotals).filter((week) => week !== 'unknown');
+          let earliestWeek = '';
+          let latestWeek = '';
+
+          if (validWeeks.length > 0) {
+            validWeeks.sort();
+            earliestWeek = validWeeks[0];
+            latestWeek = validWeeks[validWeeks.length - 1];
+          }
+
+          // Generate all weeks between earliest and latest (including missing ones)
+          const allWeeks: Array<{ week: string; totalGno: number }> = [];
+
+          if (earliestWeek && latestWeek) {
+            let currentWeek = dayjs(earliestWeek);
+            const endWeek = dayjs(latestWeek);
+
+            while (currentWeek.unix() <= endWeek.unix()) {
+              const weekStr = currentWeek.format('YYYY-MM-DD');
+              allWeeks.push({
+                week: weekStr,
+                totalGno: weeklyTotals[weekStr] || 0,
+              });
+              currentWeek = currentWeek.add(1, 'week');
+            }
+          } else {
+            // If no valid weeks, just use the existing data
+            allWeeks.push(
+              ...Object.entries(weeklyTotals).map(([week, totalGno]) => ({
+                week,
+                totalGno,
+              })),
+            );
+          }
+
+          // Sort weeks (newest first), with 'unknown' weeks at the end
+          const weeks = allWeeks.sort((a, b) => {
+            if (a.week === 'unknown') return 1;
+            if (b.week === 'unknown') return -1;
+            return b.week.localeCompare(a.week);
+          });
+
+          return {
+            data: {
+              weeks,
+              totalGnoPaidOut,
+              totalDistributions: items.length,
+            },
+            status: 'ok',
+            statusCode: 200,
+            _query: queryParsed,
+          };
+        },
+      );
+
+      return res.json(response);
     } catch (error) {
       return returnServerError({ response: res, error, logger });
     }
