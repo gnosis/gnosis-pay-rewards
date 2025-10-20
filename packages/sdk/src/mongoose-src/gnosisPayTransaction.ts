@@ -67,7 +67,11 @@ export const gnosisPayTransactionSchema = new Schema<GnosisPayTransactionFieldsT
   {
     _id: false,
   },
-);
+)
+  // Critical indexes for performance
+  .index({ safeAddress: 1, blockTimestamp: -1 })
+  .index({ blockNumber: -1 })
+  .index({ weekId: 1 });
 
 export type GnosisPayTransactionModelType = Model<GnosisPayTransactionFieldsType_Unpopulated>;
 

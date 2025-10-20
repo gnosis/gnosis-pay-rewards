@@ -34,7 +34,10 @@ const gnosisPayTokenSchema = new Schema<TokenDocumentFieldsType>(
     _id: false, // Disable the _id field
     timestamps: true,
   },
-);
+)
+  // Indexes for performance
+  .index({ chainId: 1 })
+  .index({ oracle: 1 });
 
 export type TokenModelType = Model<TokenDocumentFieldsType>;
 

@@ -62,7 +62,10 @@ const gnosisPaySafeAddressSchema = new Schema<GnosisPaySafeAddressDocumentFields
       required: true,
     },
   ],
-});
+})
+  // Critical indexes for performance
+  .index({ owners: 1 })
+  .index({ isOg: 1 });
 
 export type GnosisPaySafeAddressModelType = Model<GnosisPaySafeAddressDocumentFieldsType>;
 

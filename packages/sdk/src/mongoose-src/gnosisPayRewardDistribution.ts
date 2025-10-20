@@ -50,7 +50,11 @@ export const gnosisPayRewardDistributionSchema = new Schema<GnosisPayRewardDistr
     },
     default: null,
   },
-});
+})
+  // Critical indexes for performance
+  .index({ safe: 1, blockNumber: -1 })
+  .index({ week: 1 })
+  .index({ transactionHash: 1 });
 
 export type GnosisPayRewardDistributionModelType = Model<GnosisPayRewardDistributionDocumentFieldsType> & {
   /**
