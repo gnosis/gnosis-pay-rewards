@@ -12,7 +12,6 @@ import {
   usdcBridgeToken,
   circleUsdcToken,
   getTokenBalanceOf,
-  getFourWeekVolumeThreshold,
 } from '@karpatkey/gnosis-pay-rewards-sdk';
 import {
   createWeekRewardsSnapshotDocument,
@@ -404,25 +403,12 @@ async function saveToDatabase(
     weekRewardDocument.minGnoBalance = gnoBalance;
   }
 
-  // Retrieve the last three weeks of data
-  const fourWeekSnapshots = await weekCashbackRewardModel
-    .find({ safe: safeAddress }, { netUsdVolume: 1, week: 1 })
-    .sort({ week: -1 })
-    .limit(4)
-    .lean();
-
-  const fourWeeksUsdVolume = fourWeekSnapshots.reduce((acc, curr) => acc + curr.netUsdVolume, 0);
-
-  // Calculate the estimated reward for the week
+  // Calculate the estimated reward for the week (four-week thresholds removed)
   const rewardAmountResult = calculateWeekRewardAmount({
-    fourWeeksUsdVolume,
     gnoBalance: weekRewardDocument.minGnoBalance,
     gnoUsdPrice,
     isOgNftHolder: gnosisPaySafeAddressPayload.isOg,
     weekUsdVolume: weekRewardDocument.netUsdVolume,
-    // Convert the four week volume threshold from native token units to USD
-    fourWeeksUsdVolumeThreshold:
-      getFourWeekVolumeThreshold(transactionPayload.amountToken) * transactionPayload.safeTokenUsdPrice,
   });
 
   // Calculate the estimated reward for the week
