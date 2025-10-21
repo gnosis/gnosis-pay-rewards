@@ -66,7 +66,13 @@ const weekCashbackRewardSchema = new Schema<WeekCashbackRewardDocumentFieldsType
     ],
   },
   { timestamps: true },
-);
+)
+  // Critical indexes for performance
+  .index({ week: 1 }) // For queries by week
+  .index({ safe: 1, week: -1 }) // For queries by safe address and week (most recent first)
+  .index({ safe: 1 }) // For queries by safe address only
+  .index({ netUsdVolume: -1 }) // For sorting by volume
+  .index({ estimatedReward: -1 }); // For sorting by estimated reward
 
 const modelName = 'WeekCashbackReward' as const;
 

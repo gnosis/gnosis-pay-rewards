@@ -41,6 +41,11 @@ export const gnosisTokenBalanceSnapshotSchema = new Schema<GnosisTokenBalanceSna
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   .index({ safe: 1, blockNumber: 1 }, { unique: true })
+  // Additional indexes for performance
+  .index({ weekId: 1 }) // For queries by week
+  .index({ safe: 1, weekId: 1 }) // For queries by safe and week
+  .index({ blockTimestamp: -1 }) // For time-based queries
+  .index({ safe: 1, blockTimestamp: -1 }) // For safe-specific time queries
   .pre('save', function (next) {
     this.safe = this.safe.toLowerCase() as Address;
     next();

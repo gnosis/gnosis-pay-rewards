@@ -33,48 +33,19 @@ import { getGnosisPaySafeOwners } from './gp/getGnosisPaySafeOwners.js';
 import { isGnosisPaySafeAddress } from './gp/isGnosisPaySafeAddress.js';
 import { hasGnosisPayOgNft, hasGnosisPayOgNftV2 } from './gp/hasGnosisPayOgNft.js';
 import { dayjsUtc as dayjs } from './dayjs-utc.js';
-
-// Simple in-memory cache implementation
-type CacheEntry<T> = {
-  data: T;
-  expiresAt: number;
-};
-
-class InMemoryCache {
-  private cache: Map<string, CacheEntry<any>> = new Map();
-
-  set<T>(key: string, data: T, ttlMs: number): void {
-    const expiresAt = Date.now() + ttlMs;
-    this.cache.set(key, { data, expiresAt });
-  }
-
-  get<T>(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-
-    if (Date.now() > entry.expiresAt) {
-      this.cache.delete(key);
-      return null;
-    }
-
-    return entry.data as T;
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-}
+import { RedisCache } from './cache.js';
+import { NODE_ENV } from './config/env.js';
 
 // Generic cache wrapper function
 async function withCache<T extends { cache?: { hit: boolean; expiresAt: number } }>(
-  cache: InMemoryCache,
+  cache: RedisCache,
   cacheKey: string,
   cacheDuration: number,
   res: Response,
   dataFetcher: () => Promise<T>,
 ): Promise<T> {
   // Check if response is in cache
-  const cachedResponse = cache.get<T>(cacheKey);
+  const cachedResponse = await cache.get<T>(cacheKey);
 
   if (cachedResponse) {
     // Set cache headers
@@ -108,7 +79,7 @@ async function withCache<T extends { cache?: { hit: boolean; expiresAt: number }
   };
 
   // Cache the response
-  cache.set(cacheKey, responseWithCache, cacheDuration);
+  await cache.set(cacheKey, responseWithCache, cacheDuration);
 
   // Set cache headers
   res.set('Cache-Control', `public, max-age=${Math.floor(cacheDuration / 1000)}`);
@@ -123,6 +94,7 @@ export function addHttpRoutes({
   getIndexerState,
   client,
   logger,
+  cache,
 }: {
   expressApp: Express;
   mongooseModels: {
@@ -137,6 +109,7 @@ export function addHttpRoutes({
   logger: Logger;
   client: PublicClient<Transport, typeof gnosis>;
   getIndexerState: () => IndexerStateAtomType;
+  cache: RedisCache;
 }) {
   const {
     gnosisTokenBalanceSnapshotModel,
@@ -148,8 +121,7 @@ export function addHttpRoutes({
     gnosisPayTokenPriceModel,
   } = mongooseModels;
 
-  // Initialize in-memory cache
-  const cache = new InMemoryCache();
+  // Cache is now passed as parameter
 
   // Cache durations in milliseconds
   const CACHE_DURATION = {
@@ -189,10 +161,10 @@ export function addHttpRoutes({
 
       // Define response type
       type WeekSnapshotResponse = {
-        data: any;
+        data: unknown;
         status: string;
         statusCode: number;
-        _query: any;
+        _query: { week: WeekIdFormatType };
         cache?: {
           hit: boolean;
           expiresAt: number;
@@ -208,6 +180,9 @@ export function addHttpRoutes({
         const _query = { week: weekId };
         const weekSafeSnapshot = await weekCashbackRewardModel
           .find(_query)
+          .select(
+            'safe week netUsdVolume maxGnoBalance minGnoBalance estimatedReward earnedReward transactions gnoBalanceSnapshots',
+          ) // Only select needed fields
           .populate<{ transactions: GnosisPayTransactionFieldsType_Unpopulated[] }>('transactions', {
             amountUsd: 1,
             amountToken: 1,
@@ -240,18 +215,40 @@ export function addHttpRoutes({
 
   expressApp.get<'/weeks'>('/weeks', async (_, res) => {
     try {
-      const weeksArray = await weekMetricsSnapshotModel.find({}, { date: 1 }).lean();
+      const cacheKey = 'weeks-list';
+      const cacheDuration = 30 * 60 * 1000; // 30 minutes
 
-      const weeksArrayWithIds = weeksArray.map((week) => ({
-        id: week.date.toString(),
-        weekId: week.date.toString(),
-      }));
+      // Define response type
+      type WeeksResponse = {
+        data: Array<{ id: string; weekId: string }>;
+        status: string;
+        statusCode: number;
+        cache?: {
+          hit: boolean;
+          expiresAt: number;
+        };
+      };
 
-      return res.json({
-        data: weeksArrayWithIds,
-        status: 'ok',
-        statusCode: 200,
+      const response = await withCache<WeeksResponse>(cache, cacheKey, cacheDuration, res, async () => {
+        const weeksArray = await weekMetricsSnapshotModel
+          .find({}, { date: 1 })
+          .sort({ date: -1 }) // Most recent weeks first
+          .limit(52) // Limit to last year of data
+          .lean();
+
+        const weeksArrayWithIds = weeksArray.map((week) => ({
+          id: week.date.toString(),
+          weekId: week.date.toString(),
+        }));
+
+        return {
+          data: weeksArrayWithIds,
+          status: 'ok',
+          statusCode: 200,
+        };
       });
+
+      return res.json(response);
     } catch (error) {
       return returnServerError({ response: res, error, logger });
     }
@@ -543,14 +540,16 @@ export function addHttpRoutes({
       const safeAddress = addressSchema.parse(req.params.safeAddress);
       const transactions = await gnosisPayTransactionModel
         .find({
-          safeAddress: new RegExp(safeAddress, 'i'),
+          safeAddress: safeAddress.toLowerCase(), // Use exact match with lowercase for better index usage
         })
+        .select('transactionHash amountUsd amountToken blockTimestamp type gnoBalance') // Only select needed fields
         .populate('amountToken', {
           symbol: 1,
           decimals: 1,
           name: 1,
         })
         .sort({ blockTimestamp: -1 })
+        .limit(100) // Add reasonable limit
         .lean();
 
       return res.json({
@@ -684,8 +683,11 @@ function returnServerError({ response, error, logger }: { response: Response; er
     error: 'Internal server error',
     status: 'error',
     statusCode: 500,
-    errorStack: error instanceof Error ? error.stack : undefined,
   };
+
+  if (NODE_ENV === 'development') {
+    (responseBody as any).errorStack = error instanceof Error ? error.stack : undefined;
+  }
 
   if (error instanceof ZodError || error instanceof CustomError) {
     return response.status(400).json({

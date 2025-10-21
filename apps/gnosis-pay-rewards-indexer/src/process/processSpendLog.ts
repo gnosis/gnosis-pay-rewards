@@ -417,10 +417,18 @@ async function saveToDatabase(
 
   // Create the safe address document
   {
-    // All GnosisPay transactions for this safe address
+    // All GnosisPay transactions for this safe address - only fetch required fields for netUsdVolume calculation
+    const existingTransactions = await gnosisPayTransactionModel
+      .find({ safeAddress })
+      .select('type amountUsd') // Only select fields needed for calculateNetUsdVolume
+      .lean();
+
     const allGnosisPayTransactions = [
-      transactionDocument.toJSON(), // we include this manually this since the document hasn't been saved to the database yet
-      ...(await gnosisPayTransactionModel.find({ safeAddress }).lean()),
+      {
+        type: transactionDocument.type,
+        amountUsd: transactionDocument.amountUsd,
+      }, // we include this manually since the document hasn't been saved to the database yet
+      ...existingTransactions,
     ];
 
     const gnosisPaySafeAddressDocument = await createGnosisPaySafeAddressDocument(

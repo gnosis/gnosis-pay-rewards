@@ -22,7 +22,7 @@ import { gnosis } from 'viem/chains';
 import { Logger } from 'winston';
 
 import { buildSocketIoServer, buildExpressApp } from './server.js';
-import { SOCKET_IO_SERVER_PORT, HTTP_SERVER_HOST, HTTP_SERVER_PORT } from './config/env.js';
+import { SOCKET_IO_SERVER_PORT, HTTP_SERVER_HOST, HTTP_SERVER_PORT, REDIS_URL } from './config/env.js';
 import { waitForBlock } from './waitForBlock.js';
 
 import { addHttpRoutes } from './addHttpRoutes.js';
@@ -47,6 +47,7 @@ import {
   updateLatestBlockNumber,
 } from './indexer-state.js';
 import { GnosisChainPublicClient } from './process/types.js';
+import { RedisCache } from './cache.js';
 
 export type StartIndexingParamsType = {
   client: PublicClient<Transport, typeof gnosis>;
@@ -87,12 +88,23 @@ type StartServersParamsType = {
  * @returns the rest API server and the socket.io server
  */
 export async function startIoServers({ client, mongooseModels, logger }: StartServersParamsType) {
+  // Initialize cache (Redis with fallback to in-memory)
+  const cache = new RedisCache({ logger, url: REDIS_URL });
+
+  try {
+    await cache.connect();
+  } catch (error) {
+    logger.error('Error connecting to cache', { error });
+    throw error;
+  }
+
   const restApiServer = addHttpRoutes({
     expressApp: buildExpressApp(),
     client,
     mongooseModels,
     getIndexerState,
     logger,
+    cache,
   });
 
   const socketIoServer = addSocketComms({

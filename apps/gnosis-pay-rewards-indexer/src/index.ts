@@ -2,7 +2,7 @@ process.env.TZ = 'UTC'; // Set the timezone to UTC
 import './sentry.js'; // imported first to setup sentry
 import { gnosisChainPublicClient as client } from './publicClient.js';
 import { startIndexing, StartIndexingParamsType, startIoServers } from './core.js';
-import { ENABLE_INDEXING, FETCH_BLOCK_SIZE, MONGODB_URI, RESUME_INDEXING } from './config/env.js';
+import { ENABLE_INDEXING, FETCH_BLOCK_SIZE, MONGODB_URI, NODE_ENV, RESUME_INDEXING } from './config/env.js';
 import {
   createBlockModel,
   createConnection,
@@ -25,7 +25,10 @@ async function main(resumeIndexing: boolean = RESUME_INDEXING) {
 
     const mongooseConnection = await createConnection(MONGODB_URI);
 
-    mongooseConnection.set('debug', true);
+    // Only enable debug mode in development
+    if (NODE_ENV === 'development') {
+      mongooseConnection.set('debug', true);
+    }
     logger.info(`connected to mongodb at ${mongooseConnection.connection.host}`);
 
     const mongooseModels: StartIndexingParamsType['mongooseModels'] = {

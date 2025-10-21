@@ -18,6 +18,7 @@ const envSchema = z
     WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS: z.string().optional(),
     SENTRY_DSN: z.string().optional(),
     MONGODB_URI: z.string().min(1),
+    REDIS_URL: z.string().url(),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     IS_DOCKER: z
       .string()
@@ -102,4 +103,5 @@ export const {
   ENABLE_INDEXING,
   LOGGER_MONGODB_TRANSPORT_ENABLED,
   LOGGER_MONGODB_TRANSPORT_URI,
+  REDIS_URL,
 } = envSchema.parse(process.env);

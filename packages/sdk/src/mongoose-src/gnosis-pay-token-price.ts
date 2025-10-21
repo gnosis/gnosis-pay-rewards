@@ -41,6 +41,7 @@ const gnosisPayTokenPriceSchema = new Schema<GnosisPayTokenPriceDocumentFieldsTy
 )
   .index({ token: 1, blockNumber: -1 })
   .index({ blockTimestamp: 1 })
+  .index({ blockTimestamp: 1, token: 1 }) // For date range queries with token filter
   .plugin(mongoosePaginate);
 
 export type GnosisPayTokenPriceModelType = PaginateModel<GnosisPayTokenPriceDocumentFieldsType>;
