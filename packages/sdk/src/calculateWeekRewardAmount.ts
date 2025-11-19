@@ -1,5 +1,6 @@
 /**
  * Get the maximum weekly spending eligible for cashback based on GNO balance tier.
+ * Uses linear interpolation between tier boundaries, similar to reward percentage calculation.
  * @param gnoBalance - The GNO balance to determine the tier
  * @returns The maximum weekly spending in USD eligible for cashback
  */
@@ -8,14 +9,17 @@ export function getMaxWeeklySpending(gnoBalance: number): number {
     // Tier 4: 100+ GNO → $1,250 max weekly spending
     return 1_250;
   } else if (gnoBalance >= 10) {
-    // Tier 3: 10+ GNO → $500 max weekly spending
-    return 500;
+    // Tier 3: 10-100 GNO → Linear interpolation from $500 to $1,250
+    // At 10 GNO: $500, at 100 GNO: $1,250
+    return 500 + ((gnoBalance - 10) / 90) * (1_250 - 500);
   } else if (gnoBalance >= 1) {
-    // Tier 2: 1+ GNO → $375 max weekly spending
-    return 375;
+    // Tier 2: 1-10 GNO → Linear interpolation from $375 to $500
+    // At 1 GNO: $375, at 10 GNO: $500
+    return 375 + ((gnoBalance - 1) / 9) * (500 - 375);
   } else if (gnoBalance >= 0.1) {
-    // Tier 1: 0.1+ GNO → $250 max weekly spending
-    return 250;
+    // Tier 1: 0.1-1 GNO → Linear interpolation from $250 to $375
+    // At 0.1 GNO: $250, at 1 GNO: $375
+    return 250 + ((gnoBalance - 0.1) / 0.9) * (375 - 250);
   } else {
     // Not eligible for rewards
     return 0;
@@ -129,19 +133,34 @@ export function calculateWeekRewardAmount(params: CalculateWeekRewardParamsType)
   });
 }
 
-function calculateRewardAmountPercentageTier(gnoBalance: number, isOgNftHolder: boolean): number {
-  // Calculate base reward percentage based on GNO holdings with linear progression
+/**
+ * Calculate the reward percentage tier based on GNO balance with linear progression.
+ * Uses linear interpolation between tier boundaries, similar to weekly spending caps.
+ * @param gnoBalance - The GNO balance to determine the tier
+ * @param isOgNftHolder - Whether the user is an OG NFT holder (adds +1 to tier)
+ * @returns The reward percentage tier (0-4, or 0-5 with OG NFT boost)
+ */
+export function calculateRewardAmountPercentageTier(gnoBalance: number, isOgNftHolder: boolean): number {
   let rewardAmountPercentageTier = 0;
+
   if (gnoBalance >= 100) {
+    // Tier 4: 100+ GNO → 4%
     rewardAmountPercentageTier = 4;
   } else if (gnoBalance >= 10) {
-    rewardAmountPercentageTier = 3 + (gnoBalance - 10) / 90;
+    // Tier 3: 10-100 GNO → Linear interpolation from 3% to 4%
+    // At 10 GNO: 3, at 100 GNO: 4
+    rewardAmountPercentageTier = 3 + ((gnoBalance - 10) / 90) * (4 - 3);
   } else if (gnoBalance >= 1) {
-    rewardAmountPercentageTier = 2 + (gnoBalance - 1) / 9;
+    // Tier 2: 1-10 GNO → Linear interpolation from 2% to 3%
+    // At 1 GNO: 2, at 10 GNO: 3
+    rewardAmountPercentageTier = 2 + ((gnoBalance - 1) / 9) * (3 - 2);
   } else if (gnoBalance >= 0.1) {
-    rewardAmountPercentageTier = 1 + (gnoBalance - 0.1) / 0.9;
+    // Tier 1: 0.1-1 GNO → Linear interpolation from 1% to 2%
+    // At 0.1 GNO: 1, at 1 GNO: 2
+    rewardAmountPercentageTier = 1 + ((gnoBalance - 0.1) / 0.9) * (2 - 1);
   } else {
-    rewardAmountPercentageTier = 0; // Not eligible for rewards
+    // Not eligible for rewards
+    rewardAmountPercentageTier = 0;
   }
 
   // Add OG GP NFT holder boost if applicable

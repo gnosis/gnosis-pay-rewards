@@ -1,7 +1,7 @@
 {
   "name": "@karpatkey/gnosis-pay-rewards-sdk",
   "private": false,
-  "version": "7.0.0-rc.0",
+  "version": "7.1.0-rc.0",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.esm.js",
@@ -39,7 +39,8 @@
     "build": "pnpm clean && rollup -c",
     "test": "jest --passWithNoTests",
     "codegen": "echo 'No codegen for this package'",
-    "prepublishOnly": "pnpm test && pnpm build"
+    "prepublishOnly": "pnpm test && pnpm build",
+    "show-gno-effects": "npx tsx src/scripts/showGnoBalanceEffects.ts"
   },
   "dependencies": {
     "debug": "^4.3.4"

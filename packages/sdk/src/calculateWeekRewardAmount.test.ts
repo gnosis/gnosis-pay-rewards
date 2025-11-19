@@ -103,15 +103,26 @@ describe('calculateWeekRewardAmount', () => {
 // Removed currency thresholds tests as four-week thresholds are no longer used in reward logic
 
 describe('getMaxWeeklySpending', () => {
-  test('returns correct spending limits for each tier', () => {
-    expect(getMaxWeeklySpending(100)).toBe(1_250); // Tier 4
-    expect(getMaxWeeklySpending(50)).toBe(500); // Tier 3
-    expect(getMaxWeeklySpending(10)).toBe(500); // Tier 3
-    expect(getMaxWeeklySpending(5)).toBe(375); // Tier 2
-    expect(getMaxWeeklySpending(1)).toBe(375); // Tier 2
-    expect(getMaxWeeklySpending(0.5)).toBe(250); // Tier 1
-    expect(getMaxWeeklySpending(0.1)).toBe(250); // Tier 1
+  test('returns correct spending limits with linear interpolation', () => {
+    // Tier boundaries (exact values)
+    expect(getMaxWeeklySpending(100)).toBe(1_250); // Tier 4 boundary
+    expect(getMaxWeeklySpending(10)).toBe(500); // Tier 3 boundary
+    expect(getMaxWeeklySpending(1)).toBe(375); // Tier 2 boundary
+    expect(getMaxWeeklySpending(0.1)).toBe(250); // Tier 1 boundary
     expect(getMaxWeeklySpending(0.05)).toBe(0); // Not eligible
+
+    // Mid-tier values (linear interpolation)
+    // Tier 3: 50 GNO (midpoint between 10 and 100)
+    // 500 + ((50 - 10) / 90) * (1_250 - 500) = 500 + (40/90) * 750 = 500 + 333.33... = 833.33...
+    expect(getMaxWeeklySpending(50)).toBeCloseTo(833.33, 1);
+
+    // Tier 2: 5 GNO (midpoint between 1 and 10)
+    // 375 + ((5 - 1) / 9) * (500 - 375) = 375 + (4/9) * 125 = 375 + 55.56... = 430.56...
+    expect(getMaxWeeklySpending(5)).toBeCloseTo(430.56, 1);
+
+    // Tier 1: 0.5 GNO (midpoint between 0.1 and 1)
+    // 250 + ((0.5 - 0.1) / 0.9) * (375 - 250) = 250 + (0.4/0.9) * 125 = 250 + 55.56... = 305.56...
+    expect(getMaxWeeklySpending(0.5)).toBeCloseTo(305.56, 1);
   });
 });
 
