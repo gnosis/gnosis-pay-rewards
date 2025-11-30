@@ -29,24 +29,38 @@ export async function handleSpendLogs({
   mongooseModels: Parameters<typeof processSpendLog>[0]['mongooseModels'];
   socketIoServer?: ReturnType<typeof buildSocketIoServer>;
 }>) {
-  for (const log of logs) {
-    try {
-      const { data, error } = await processSpendLog({
-        client,
-        log,
-        mongooseModels,
-      });
 
-      if (error) throw error;
+  //TODO: implement bulk insert and rework concurrency
+  const CONCURRENCY = 10;
+  const results = [];
+  
+  for (let i = 0; i < logs.length; i += CONCURRENCY) {
+    const batch = logs.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (log) => {
+        try {
+          const { data, error } = await processSpendLog({
+            client,
+            log,
+            mongooseModels,
+          });
 
-      if (data !== null && socketIoServer) {
-        socketIoServer.emit('newSpendTransaction', data.gnosisPayTransaction);
-        socketIoServer.emit('newTransaction', data.gnosisPayTransaction);
-        socketIoServer.emit('currentWeekMetricsSnapshotUpdated', data.weekMetricsSnapshot);
-      }
-    } catch (e) {
-      handleError(logger, e as Error, log as any);
-    }
+          if (error) throw error;
+
+          if (data !== null && socketIoServer) {
+            socketIoServer.emit('newSpendTransaction', data.gnosisPayTransaction);
+            socketIoServer.emit('newTransaction', data.gnosisPayTransaction);
+            socketIoServer.emit('currentWeekMetricsSnapshotUpdated', data.weekMetricsSnapshot);
+          }
+          
+          return data;
+        } catch (e) {
+          handleError(logger, e as Error, log as any);
+          throw e;
+        }
+      })
+    );
+    results.push(...batchResults);
   }
 }
 
@@ -62,24 +76,36 @@ export async function handleRefundLogs({
   mongooseModels: Parameters<typeof processSpendLog>[0]['mongooseModels'];
   socketIoServer?: ReturnType<typeof buildSocketIoServer>;
 }>) {
-  for (const log of logs) {
-    try {
-      const { data, error } = await processRefundLog({
-        client,
-        log,
-        mongooseModels,
-      });
+  const CONCURRENCY = 10;
+  const results = [];
+  
+  for (let i = 0; i < logs.length; i += CONCURRENCY) {
+    const batch = logs.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (log) => {
+        try {
+          const { data, error } = await processRefundLog({
+            client,
+            log,
+            mongooseModels,
+          });
 
-      if (error) throw error;
+          if (error) throw error;
 
-      if (data !== null && socketIoServer) {
-        socketIoServer.emit('newRefundTransaction', data.gnosisPayTransaction);
-        socketIoServer.emit('newTransaction', data.gnosisPayTransaction);
-        socketIoServer.emit('currentWeekMetricsSnapshotUpdated', data.weekMetricsSnapshot);
-      }
-    } catch (e) {
-      handleError(logger, e as Error, log as any);
-    }
+          if (data !== null && socketIoServer) {
+            socketIoServer.emit('newRefundTransaction', data.gnosisPayTransaction);
+            socketIoServer.emit('newTransaction', data.gnosisPayTransaction);
+            socketIoServer.emit('currentWeekMetricsSnapshotUpdated', data.weekMetricsSnapshot);
+          }
+          
+          return data;
+        } catch (e) {
+          handleError(logger, e as Error, log as any);
+          throw e;
+        }
+      })
+    );
+    results.push(...batchResults);
   }
 }
 
@@ -93,18 +119,28 @@ export async function handleGnosisTokenTransferLogs({
     logs: LogsType<typeof getGnosisTokenTransferLogs>;
   }
 >) {
-  for (const log of logs) {
-    try {
-      const { error } = await processGnosisTokenTransferLog({
-        client,
-        log,
-        mongooseModels,
-      });
+  const CONCURRENCY = 10;
+  const results = [];
+  
+  for (let i = 0; i < logs.length; i += CONCURRENCY) {
+    const batch = logs.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (log) => {
+        try {
+          const { error } = await processGnosisTokenTransferLog({
+            client,
+            log,
+            mongooseModels,
+          });
 
-      if (error) throw error;
-    } catch (e) {
-      handleError(logger, e as Error, log as any);
-    }
+          if (error) throw error;
+        } catch (e) {
+          handleError(logger, e as Error, log as any);
+          throw e;
+        }
+      })
+    );
+    results.push(...batchResults);
   }
 }
 
@@ -118,18 +154,28 @@ export async function handleGnosisPayOgNftTransferLogs({
     logs: LogsType<typeof getGnosisPayClaimOgNftLogs>;
   }
 >) {
-  for (const log of logs) {
-    try {
-      const { error } = await processGnosisPayClaimOgNftLog({
-        client,
-        log,
-        mongooseModels,
-      });
+  const CONCURRENCY = 10;
+  const results = [];
+  
+  for (let i = 0; i < logs.length; i += CONCURRENCY) {
+    const batch = logs.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (log) => {
+        try {
+          const { error } = await processGnosisPayClaimOgNftLog({
+            client,
+            log,
+            mongooseModels,
+          });
 
-      if (error) throw error;
-    } catch (e) {
-      handleError(logger, e as Error, log as any);
-    }
+          if (error) throw error;
+        } catch (e) {
+          handleError(logger, e as Error, log as any);
+          throw e;
+        }
+      })
+    );
+    results.push(...batchResults);
   }
 }
 
@@ -153,30 +199,43 @@ export async function handleGnosisPayRewardsDistributionLogs({
     }
   >();
 
-  for (const log of logs) {
-    try {
-      const { error, data } = await processGnosisPayRewardDistributionLog({
-        log,
-        mongooseModels,
-        client,
-      });
+  const CONCURRENCY = 10;
+  const allResults = [];
+  
+  for (let i = 0; i < logs.length; i += CONCURRENCY) {
+    const batch = logs.slice(i, i + CONCURRENCY);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (log) => {
+        try {
+          const { error, data } = await processGnosisPayRewardDistributionLog({
+            log,
+            mongooseModels,
+            client,
+          });
 
-      if (error) throw error;
+          if (error) throw error;
+          return data;
+        } catch (e) {
+          handleError(logger, e as Error, log as any);
+          throw e;
+        }
+      })
+    );
+    allResults.push(...batchResults);
+  }
 
-      if (data.week !== null) {
-        const weekId = data.week;
-        weekIdsSet.add(data.week);
+  for (const result of allResults) {
+    if (result.status === 'fulfilled' && result.value.week !== null) {
+      const weekId = result.value.week;
+      weekIdsSet.add(result.value.week);
 
-        const weekData = addressesPerWeek.get(weekId) ?? {
-          receivedRewardsCount: 0,
-          notReceivedRewardsCount: 0,
-        };
+      const weekData = addressesPerWeek.get(weekId) ?? {
+        receivedRewardsCount: 0,
+        notReceivedRewardsCount: 0,
+      };
 
-        weekData.receivedRewardsCount++;
-        addressesPerWeek.set(weekId, weekData);
-      }
-    } catch (e) {
-      handleError(logger, e as Error, log as any);
+      weekData.receivedRewardsCount++;
+      addressesPerWeek.set(weekId, weekData);
     }
   }
 

@@ -22,7 +22,7 @@ import { gnosis } from 'viem/chains';
 import { Logger } from 'winston';
 
 import { buildSocketIoServer, buildExpressApp } from './server.js';
-import { SOCKET_IO_SERVER_PORT, HTTP_SERVER_HOST, HTTP_SERVER_PORT, REDIS_URL } from './config/env.js';
+import { SOCKET_IO_SERVER_PORT, HTTP_SERVER_HOST, HTTP_SERVER_PORT, REDIS_URL, TOKEN_PRICE_SNAPSHOT_BLOCK_INTERVAL, GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL } from './config/env.js';
 import { waitForBlock } from './waitForBlock.js';
 
 import { addHttpRoutes } from './addHttpRoutes.js';
@@ -144,7 +144,7 @@ export async function startIndexing({
   mongooseModels,
   logger,
 }: StartIndexingParamsType) {
-  logger.info('starting indexing');
+  logger.info(`starting indexing batch size of ${fetchBlockSize}, resumeIndexing: ${resumeIndexing}`);
 
   // Anchor the indexing to the Gnosis Pay start block
   let fromBlockNumberInitial = gnosisPayStartBlock;
@@ -203,12 +203,22 @@ export async function startIndexing({
   while (shouldFetchLogs(getIndexerState())) {
     const { range } = getIndexerState();
 
+    const rangeStartTime = Date.now();
+    // logger.info(`RANGE_START: ${range.fromBlockNumber} to ${range.toBlockNumber}`);
+
     await handleRange({
       client,
       mongooseModels,
       logger,
       range,
     });
+
+    const rangeEndTime = Date.now();
+    const rangeDuration = rangeEndTime - rangeStartTime;
+    const durationSeconds = (rangeDuration / 1000).toFixed(2);
+    logger.info(
+      `RANGE_END: ${range.fromBlockNumber} to ${range.toBlockNumber} - Duration: ${durationSeconds}s (${rangeDuration}ms)`,
+    );
 
     // Move to the next block range
     const { distanceToLatestBlockNumber } = getIndexerState();
@@ -258,11 +268,27 @@ async function handleRange({
   scopeLogger.info(`fetching logs from ${range.fromBlockNumber} to ${range.toBlockNumber}`);
 
   // Fetch all the logs
-  const spendLogs = await getGnosisPaySpendLogs(getLogsCommonParams);
-  const refundLogs = await getGnosisPayRefundLogs(getLogsCommonParams);
-  const gnosisTokenTransferLogs = await getGnosisTokenTransferLogs(getLogsCommonParams);
-  const gnosisPayRewardDistributionLogs = await getGnosisPayRewardDistributionLogs(getLogsCommonParams);
-  const claimOgNftLogs = await getGnosisPayClaimOgNftLogs(getLogsCommonParams);
+  const fetchLogsStart = Date.now();
+  const [spendLogs, refundLogs, gnosisTokenTransferLogs, gnosisPayRewardDistributionLogs, claimOgNftLogs] = 
+  await Promise.all([
+    getGnosisPaySpendLogs(getLogsCommonParams),
+    getGnosisPayRefundLogs(getLogsCommonParams),
+    getGnosisTokenTransferLogs(getLogsCommonParams),
+    getGnosisPayRewardDistributionLogs(getLogsCommonParams),
+    getGnosisPayClaimOgNftLogs(getLogsCommonParams),
+  ]);
+  const fetchLogsDuration = Date.now() - fetchLogsStart;
+
+  const totalLogs = 
+    spendLogs.length + 
+    refundLogs.length + 
+    gnosisTokenTransferLogs.length + 
+    gnosisPayRewardDistributionLogs.length + 
+    claimOgNftLogs.length;
+
+  logger.info(
+    `RANGE_LOGS: ${range.fromBlockNumber} to ${range.toBlockNumber} - Total: ${totalLogs} logs (spend:${spendLogs.length}, refund:${refundLogs.length}, transfer:${gnosisTokenTransferLogs.length}, reward:${gnosisPayRewardDistributionLogs.length}, nft:${claimOgNftLogs.length})`,
+  );
 
   scopeLogger.debug(`found ${spendLogs.length} spend logs`, {
     logsType: 'spendLogs',
@@ -280,50 +306,37 @@ async function handleRange({
     logsType: 'claimOgNftLogs',
   });
 
-  await handleSpendLogs({
-    client,
-    mongooseModels,
-    logs: spendLogs,
-    logger,
-  });
-
-  await handleRefundLogs({
-    client,
-    mongooseModels,
-    logs: refundLogs,
-    logger,
-  });
-
-  await handleGnosisTokenTransferLogs({
-    client,
-    mongooseModels,
-    logs: gnosisTokenTransferLogs,
-    logger,
-  });
-
-  await handleGnosisPayRewardsDistributionLogs({
-    client,
-    mongooseModels,
-    logs: gnosisPayRewardDistributionLogs,
-    logger,
-  });
-
-  await handleGnosisPayOgNftTransferLogs({
-    client,
-    mongooseModels,
-    logs: claimOgNftLogs,
-    logger,
-  });
+  const processLogsStart = Date.now();
+  await Promise.all([
+    handleSpendLogs({ client, mongooseModels, logs: spendLogs, logger }),
+    handleRefundLogs({ client, mongooseModels, logs: refundLogs, logger }),
+    handleGnosisTokenTransferLogs({ client, mongooseModels, logs: gnosisTokenTransferLogs, logger }),
+    handleGnosisPayRewardsDistributionLogs({ client, mongooseModels, logs: gnosisPayRewardDistributionLogs, logger }),
+    handleGnosisPayOgNftTransferLogs({ client, mongooseModels, logs: claimOgNftLogs, logger }),
+  ]);
+  const processLogsDuration = Date.now() - processLogsStart;
 
   // Among the block range, we need to record the token prices
+  const handleBlocksStart = Date.now();
+  const blocksToProcess: bigint[] = [];
   for (let blockNumber = range.fromBlockNumber; blockNumber <= range.toBlockNumber; blockNumber++) {
-    await handleBlock({
-      blockNumber,
-      client,
-      mongooseModels,
-      logger,
-    });
+    if (
+      BigInt(blockNumber) % GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL === 0n ||
+      BigInt(blockNumber) % TOKEN_PRICE_SNAPSHOT_BLOCK_INTERVAL === 0n
+    ) {
+      blocksToProcess.push(blockNumber);
+    }
   }
+
+  for (const blockNumber of blocksToProcess) {
+    await handleBlock({ blockNumber, client, mongooseModels, logger });
+  }
+  const handleBlocksDuration = Date.now() - handleBlocksStart;
+
+  // Log timing breakdown
+  logger.info(
+    `RANGE_TIMING: ${range.fromBlockNumber} to ${range.toBlockNumber} - Fetch: ${(fetchLogsDuration / 1000).toFixed(2)}s, Process: ${(processLogsDuration / 1000).toFixed(2)}s, Blocks: ${(handleBlocksDuration / 1000).toFixed(2)}s (${blocksToProcess.length} blocks)`,
+  );
 }
 
 /**
