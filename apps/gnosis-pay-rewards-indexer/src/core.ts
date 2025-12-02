@@ -307,13 +307,40 @@ async function handleRange({
   });
 
   const processLogsStart = Date.now();
-  await Promise.all([
-    handleSpendLogs({ client, mongooseModels, logs: spendLogs, logger }),
-    handleRefundLogs({ client, mongooseModels, logs: refundLogs, logger }),
-    handleGnosisTokenTransferLogs({ client, mongooseModels, logs: gnosisTokenTransferLogs, logger }),
-    handleGnosisPayRewardsDistributionLogs({ client, mongooseModels, logs: gnosisPayRewardDistributionLogs, logger }),
-    handleGnosisPayOgNftTransferLogs({ client, mongooseModels, logs: claimOgNftLogs, logger }),
-  ]);
+  await handleSpendLogs({
+    client,
+    mongooseModels,
+    logs: spendLogs,
+    logger,
+  });
+
+  await handleRefundLogs({
+    client,
+    mongooseModels,
+    logs: refundLogs,
+    logger,
+  });
+
+  await handleGnosisTokenTransferLogs({
+    client,
+    mongooseModels,
+    logs: gnosisTokenTransferLogs,
+    logger,
+  });
+
+  await handleGnosisPayRewardsDistributionLogs({
+    client,
+    mongooseModels,
+    logs: gnosisPayRewardDistributionLogs,
+    logger,
+  });
+
+  await handleGnosisPayOgNftTransferLogs({
+    client,
+    mongooseModels,
+    logs: claimOgNftLogs,
+    logger,
+  });
   const processLogsDuration = Date.now() - processLogsStart;
 
   // Among the block range, we need to record the token prices
