@@ -19,11 +19,11 @@
     "dev": {
       "cache": false
     },
-    "@karpatkey/contracts#build": {
+    "@kpk/contracts#build": {
       "outputs": ["out", "artifacts"]
     },
-    "@karpatkey/gnosis-pay-rewards-app#build": {
-      "dependsOn": ["@karpatkey/gnosis-pay-rewards-sdk#build"],
+    "@kpk/gnosis-pay-rewards-app#build": {
+      "dependsOn": ["@kpk/gnosis-pay-rewards-sdk#build"],
       "env": [
         "ALCHEMY_KEY",
         "MONGODB_URI",
@@ -38,15 +38,14 @@
         "GNO_LCMM_SOCKET_URL"
       ]
     },
-    "@karpatkey/gnosis-pay-rewards-indexer": {
-      "dependsOn": ["@karpatkey/gnosis-pay-rewards-sdk#build"],
+    "@kpk/gnosis-pay-rewards-indexer": {
+      "dependsOn": ["@kpk/gnosis-pay-rewards-sdk#build"],
       "env": [
         "TZ",
         "NODE_ENV",
         "IS_DOCKER",
         "HTTP_SERVER_PORT",
         "HTTP_SERVER_HOST",
-        "SOCKET_IO_SERVER_PORT",
         "JSON_RPC_PROVIDER_GNOSIS",
         "WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS",
         "SENTRY_DSN",

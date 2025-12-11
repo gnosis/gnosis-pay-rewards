@@ -62,7 +62,6 @@ export const sharedLibConfig = {
 };
 
 /**
- *
  * @param {*} external
  * @returns
  */

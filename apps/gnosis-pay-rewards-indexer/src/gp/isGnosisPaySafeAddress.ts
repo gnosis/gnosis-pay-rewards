@@ -1,9 +1,9 @@
-import { GnosisPaySafeAddressModelType } from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
+import { GnosisPaySafeModelType } from '@kpk/gnosis-pay-rewards-sdk/mongoose';
 import { Address, ContractFunctionZeroDataError, getContract, isAddressEqual, PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';
 
-import { gnosisPaySafeAvatarFunctionAbiItem } from './commons.js';
-import { getGnosisPaySafeModules } from './getGnosisPaySafeOwners.js';
+import { gnosisPaySafeAvatarFunctionAbiItem } from './commons.ts';
+import { getGnosisPaySafeModules } from './getGnosisPaySafeOwners.ts';
 
 type IsGnosisPaySafeAddressReturnType_Database = {
   isGnosisPaySafe: true;
@@ -32,10 +32,12 @@ type Code =
 
 class IsNotGnosisPaySafeAddressError extends Error {
   errorCode: Code;
-  name = 'IsNotGnosisPaySafeAddressError';
+  override name = 'IsNotGnosisPaySafeAddressError';
 
   constructor(address: Address, errorCode: Code) {
-    super(`Address ${address} is not a Gnosis Pay Safe address`, { cause: errorCode });
+    super(`Address ${address} is not a Gnosis Pay Safe address`, {
+      cause: errorCode,
+    });
     this.errorCode = errorCode;
   }
 }
@@ -47,11 +49,7 @@ class IsNotGnosisPaySafeAddressError extends Error {
  *
  * @returns Whether the address is a Gnosis Safe address.
  */
-export async function isGnosisPaySafeAddress({
-  address,
-  client,
-  gnosisPaySafeAddressModel,
-}: {
+export async function isGnosisPaySafeAddress(params: {
   address: Address;
   /**
    * The public client to use to do onchain checks
@@ -60,10 +58,11 @@ export async function isGnosisPaySafeAddress({
   /**
    * The mongoose model to use to check if the address is a Gnosis Safe address in the database
    */
-  gnosisPaySafeAddressModel: GnosisPaySafeAddressModelType;
+  gnosisPaySafeModel: GnosisPaySafeModelType;
 }): Promise<IsGnosisPaySafeAddressReturnType> {
+  const { address, client, gnosisPaySafeModel } = params;
   // Priority 1: Check if the address is a Gnosis Safe address in the database
-  const safeAddressEntity = await gnosisPaySafeAddressModel.exists({
+  const safeAddressEntity = await gnosisPaySafeModel.exists({
     address: address.toLowerCase(),
   });
 
@@ -92,7 +91,10 @@ export async function isGnosisPaySafeAddress({
 
   // Not bytecode means it's not a contract
   if (!contractBytecode) {
-    returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'HAS_NO_BYTECODE');
+    returnValueChain.error = new IsNotGnosisPaySafeAddressError(
+      address,
+      'HAS_NO_BYTECODE',
+    );
     return returnValueChain;
   }
 
@@ -104,7 +106,10 @@ export async function isGnosisPaySafeAddress({
     });
 
     if (safeModules.length === 0) {
-      returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'HAS_NO_GNOSIS_PAY_SAFE_MODULES');
+      returnValueChain.error = new IsNotGnosisPaySafeAddressError(
+        address,
+        'HAS_NO_GNOSIS_PAY_SAFE_MODULES',
+      );
       return returnValueChain;
     }
 
@@ -132,24 +137,42 @@ export async function isGnosisPaySafeAddress({
         client,
       });
 
-      const isDelayModuleAvatarEqualSafeAddress = isAddressEqual(await delayModuleContract.read.avatar(), address);
-      const isRolesModuleAvatarEqualSafeAddress = isAddressEqual(await rolesModuleContract.read.avatar(), address);
+      const isDelayModuleAvatarEqualSafeAddress = isAddressEqual(
+        await delayModuleContract.read.avatar(),
+        address,
+      );
+      const isRolesModuleAvatarEqualSafeAddress = isAddressEqual(
+        await rolesModuleContract.read.avatar(),
+        address,
+      );
 
-      if (isDelayModuleAvatarEqualSafeAddress && isRolesModuleAvatarEqualSafeAddress) {
+      if (
+        isDelayModuleAvatarEqualSafeAddress &&
+        isRolesModuleAvatarEqualSafeAddress
+      ) {
         returnValueChain.isGnosisPaySafe = true;
       } else {
-        returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'MODULE_AVATAR_NOT_EQUAL_TO_ADDRESS');
+        returnValueChain.error = new IsNotGnosisPaySafeAddressError(
+          address,
+          'MODULE_AVATAR_NOT_EQUAL_TO_ADDRESS',
+        );
         return returnValueChain;
       }
     }
   } catch (e) {
     if (e instanceof ContractFunctionZeroDataError) {
       // Not a Gnosis Safe
-      returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'CONTRACT_FUNCTION_ZERO_DATA_ERROR');
+      returnValueChain.error = new IsNotGnosisPaySafeAddressError(
+        address,
+        'CONTRACT_FUNCTION_ZERO_DATA_ERROR',
+      );
       return returnValueChain;
     }
 
-    returnValueChain.error = new IsNotGnosisPaySafeAddressError(address, 'UNKNOWN_ERROR');
+    returnValueChain.error = new IsNotGnosisPaySafeAddressError(
+      address,
+      'UNKNOWN_ERROR',
+    );
     return returnValueChain;
   }
 

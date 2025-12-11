@@ -1,8 +1,7 @@
 import dts from 'rollup-plugin-dts';
-import { createExportConfig, commonBuildConfig } from './config.js';
+import { commonBuildConfig, createExportConfig } from './config.js';
 
 /**
- *
  * @param {Record<'exports', unknown>} packageJson
  * @returns {import('rollup').RollupOptions[]}
  */
@@ -20,7 +19,6 @@ export function createRollupConfig(packageJson, createTypes = true) {
 }
 
 /**
- *
  * @param {string} exportName - The name of the export
  * @param {Record<'source' | 'require' | 'types' | 'import' | 'node', string>} exportModuleDefinition - The path to the entry file
  * @returns
@@ -35,7 +33,7 @@ export function createExportModule(exportName, exportModuleDefinition, createTyp
     !exportModuleDefinition.node
   ) {
     throw new Error(
-      `Invalid export definition for ${exportName}. Must contain source, require, types, import, and node`
+      `Invalid export definition for ${exportName}. Must contain source, require, types, import, and node`,
     );
   }
 

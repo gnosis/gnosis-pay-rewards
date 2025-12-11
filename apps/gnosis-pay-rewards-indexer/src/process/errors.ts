@@ -6,3 +6,12 @@ export class LogAlreadyProcessedError extends Error {
     this.name = 'LogAlreadyProcessedError';
   }
 }
+
+export class RateLimitError extends Error {
+  constructor(message: string) {
+    super(message, {
+      cause: 'RATE_LIMIT',
+    });
+    this.name = 'RateLimitError';
+  }
+}

@@ -1,340 +1,474 @@
-import {
-  gnosisPayStartBlock,
-  gnosisPayTokens,
-  gnoToken,
-  IndexerStateAtomType,
-} from '@karpatkey/gnosis-pay-rewards-sdk';
-import {
-  createGnosisPayTransactionModel,
-  createTokenModel,
-  saveGnosisPayTokensToDatabase,
-  createWeekMetricsSnapshotModel,
-  createBlockModel,
-  createWeekCashbackRewardModel,
-  createGnosisTokenBalanceSnapshotModel,
-  createGnosisPayRewardDistributionModel,
-  createGnosisPaySafeAddressModel,
-  GnosisPayTokenPriceModelType,
-} from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
-import { Mongoose } from 'mongoose';
-import { PublicClient, Transport } from 'viem';
-import { gnosis } from 'viem/chains';
+import { gnoToken, type IndexerStateType, payoutSafes } from '@kpk/gnosis-pay-rewards-sdk';
+import { type CreateModelsReturnType } from '@kpk/gnosis-pay-rewards-sdk/mongoose';
 import { Logger } from 'winston';
+import { retry } from './lib/retry.ts';
+import { createHttpServer } from './http-server.ts';
+import { waitForBlock } from './lib/wait-for-block.ts';
 
-import { buildSocketIoServer, buildExpressApp } from './server.js';
-import { SOCKET_IO_SERVER_PORT, HTTP_SERVER_HOST, HTTP_SERVER_PORT, REDIS_URL } from './config/env.js';
-import { waitForBlock } from './waitForBlock.js';
-
-import { addHttpRoutes } from './addHttpRoutes.js';
-import { addSocketComms } from './addSocketComms.js';
-import { getGnosisPaySpendLogs } from './gp/getGnosisPaySpendLogs.js';
-import { getGnosisPayRefundLogs } from './gp/getGnosisPayRefundLogs.js';
-import { getGnosisTokenTransferLogs } from './gp/getGnosisTokenTransferLogs.js';
-import { getGnosisPayRewardDistributionLogs } from './gp/getGnosisPayRewardDistributionLogs.js';
-import { getGnosisPayClaimOgNftLogs } from './gp/getGnosisPayClaimOgNftLogs.js';
+import { getGnosisPaySpendLogs } from './gp/getGnosisPaySpendLogs.ts';
+import { getGnosisPayRefundLogs } from './gp/getGnosisPayRefundLogs.ts';
+import { getTokenTransferLogs } from './gp/getTokenTransferLogs.ts';
+import { getGnosisPayClaimOgNftLogs } from './gp/getGnosisPayClaimOgNftLogs.ts';
 import {
-  handleSpendLogs,
-  handleGnosisTokenTransferLogs,
   handleGnosisPayOgNftTransferLogs,
   handleGnosisPayRewardsDistributionLogs,
+  handleGnosisTokenTransferLogs,
   handleRefundLogs,
-} from './handleLogs.js';
-import { handleBlock } from './handleBlock.js';
-import {
-  getIndexerState,
-  initializeIndexerState,
-  moveToNextBlockRange,
-  updateLatestBlockNumber,
-} from './indexer-state.js';
-import { GnosisChainPublicClient } from './process/types.js';
-import { RedisCache } from './cache.js';
+  handleSpendLogs,
+} from './handleLogs.ts';
+import type { IndexerState } from './lib/indexer-state.ts';
+import type { GnosisChainPublicClient } from './process/types.ts';
+import type { RedisCache } from './lib/redis-cache.ts';
+import type { BlockInfoProvider } from './lib/block-info-provider.ts';
+import { runRangePostProcessingOperations } from './process/block-range-post-actions.ts';
+import { buildRetryOptions } from './gp/commons.ts';
+import { handleSaveBlock } from './process/save-block.ts';
+import { IndexerCheckpointModelType, saveIndexerCheckpoint } from './lib/indexer-checkpoint.ts';
 
-export type StartIndexingParamsType = {
-  client: PublicClient<Transport, typeof gnosis>;
-  /**
-   * If true, the indexer will resume indexing from the latest pending reward in the database.
-   * If the database is empty, the indexer will start indexing from the Gnosis Pay start block.
-   * See {@link gnosisPayStartBlock} for the start block.
-   */
-  readonly resumeIndexing?: boolean;
-  readonly fetchBlockSize?: bigint;
-  mongooseConnection: Mongoose;
-  mongooseModels: {
-    gnosisPaySafeAddressModel: ReturnType<typeof createGnosisPaySafeAddressModel>;
-    gnosisPayTransactionModel: ReturnType<typeof createGnosisPayTransactionModel>;
-    weekCashbackRewardModel: ReturnType<typeof createWeekCashbackRewardModel>;
-    weekMetricsSnapshotModel: ReturnType<typeof createWeekMetricsSnapshotModel>;
-    gnosisPayTokenModel: ReturnType<typeof createTokenModel>;
-    gnosisPayTokenPriceModel: GnosisPayTokenPriceModelType;
-    blockModel: ReturnType<typeof createBlockModel>;
-    gnosisTokenBalanceSnapshotModel: ReturnType<typeof createGnosisTokenBalanceSnapshotModel>;
-    gnosisPayRewardDistributionModel: ReturnType<typeof createGnosisPayRewardDistributionModel>;
-  };
-  logger: Logger;
+type BaseParamsType = {
+  client: GnosisChainPublicClient;
+  redisCache: RedisCache;
+  mongooseModels: CreateModelsReturnType;
+  logger?: Logger;
+  blockInfoProvider: BlockInfoProvider;
 };
 
-type StartServersParamsType = {
-  client: PublicClient<Transport, typeof gnosis>;
-  mongooseModels: StartIndexingParamsType['mongooseModels'];
-  logger: Logger;
+type HandleRangeParamsType = BaseParamsType & {
+  range: IndexerStateType['range'];
+  indexerState: IndexerState;
+  indexerCheckpointModel: IndexerCheckpointModelType;
+};
+
+export type StartIndexerParamsType = BaseParamsType & {
+  archiveClient: GnosisChainPublicClient;
+  indexerState: IndexerState;
+  indexerCheckpointModel: IndexerCheckpointModelType;
+};
+export type StartServersParamsType = BaseParamsType & {
+  getIndexerStates: () => Promise<IndexerStateType[]>;
+  http: {
+    port: number;
+    hostname: string;
+  };
 };
 
 /**
- * Start the I/O HTTP and WebSocket servers,
- * ports are defined in {@link HTTP_SERVER_PORT} and {@link SOCKET_IO_SERVER_PORT}
+ * Start the I/O HTTP server,
  * @param client - the client to use for the servers
  * @param mongooseModels - the mongoose models to use for the servers
  * @param logger - the logger to use for the servers
  * @returns the rest API server and the socket.io server
  */
-export async function startIoServers({ client, mongooseModels, logger }: StartServersParamsType) {
-  // Initialize cache (Redis with fallback to in-memory)
-  const cache = new RedisCache({ logger, url: REDIS_URL });
-
-  try {
-    await cache.connect();
-  } catch (error) {
-    logger.error('Error connecting to cache', { error });
-    throw error;
-  }
-
-  const restApiServer = addHttpRoutes({
-    expressApp: buildExpressApp(),
-    client,
-    mongooseModels,
-    getIndexerState,
+export async function startIoServers(params: StartServersParamsType) {
+  const {
     logger,
-    cache,
-  });
+    http,
+  } = params;
 
-  const socketIoServer = addSocketComms({
-    socketIoServer: buildSocketIoServer(restApiServer),
-    mongooseModels,
-  });
+  const restApiServer = createHttpServer(params);
 
-  restApiServer.listen(HTTP_SERVER_PORT, HTTP_SERVER_HOST);
-  socketIoServer.listen(SOCKET_IO_SERVER_PORT);
+  await restApiServer.listen({ port: http.port, hostname: http.hostname });
 
-  const apiServerUrl = `http://${HTTP_SERVER_HOST}:${HTTP_SERVER_PORT}`;
-  const wsServerUrl = `ws://${HTTP_SERVER_HOST}:${SOCKET_IO_SERVER_PORT}`;
+  const apiServerUrl = `http://${http.hostname}:${http.port}`;
 
-  logger.info(`WebSocket server available at ${wsServerUrl}`);
-  logger.info(`REST API server available at ${apiServerUrl}`);
+  const serverInfoMessage = `REST API server available at ${apiServerUrl}`;
+
+  if (logger) {
+    logger.info(serverInfoMessage);
+  } else {
+    console.log(serverInfoMessage);
+  }
 
   return {
     restApiServer,
-    socketIoServer,
   };
 }
 
 /**
  * Start the indexing process
  * @param client - the client to use for the indexing
- * @param resumeIndexing - if true, the indexer will resume indexing from the latest pending reward in the database
  * @param fetchBlockSize - the size of the block range to fetch
  * @param mongooseConnection - the mongoose connection to use for the indexing
  * @param mongooseModels - the mongoose models to use for the indexing
  * @param logger - the logger to use for the indexing
  */
-export async function startIndexing({
-  client,
-  resumeIndexing = false,
-  fetchBlockSize = 12n * 5n,
-  mongooseConnection,
-  mongooseModels,
-  logger,
-}: StartIndexingParamsType) {
-  logger.info('starting indexing');
+export async function startIndexer(params: StartIndexerParamsType) {
+  const {
+    archiveClient,
+    client,
+    mongooseModels,
+    logger,
+    indexerState,
+    blockInfoProvider,
+    indexerCheckpointModel,
+  } = params;
 
-  // Anchor the indexing to the Gnosis Pay start block
-  let fromBlockNumberInitial = gnosisPayStartBlock;
+  logger?.info('starting indexing', {
+    initialState: indexerState.toJSON(),
+  });
 
-  // When resuming indexing, we need to find the latest Gnosis Pay transaction in the database
-  if (resumeIndexing === true) {
-    const [latestGnosisPayTransaction] = await mongooseModels.gnosisPayTransactionModel
-      .find()
-      .sort({ blockNumber: -1 })
-      .limit(1);
+  // Watch for new blocks with automatic restart on error
+  let unwatchBlocks: (() => void) | undefined;
 
-    if (latestGnosisPayTransaction !== undefined) {
-      fromBlockNumberInitial = BigInt(latestGnosisPayTransaction.blockNumber) - 1n;
-      logger.info(`resuming indexing from block ${fromBlockNumberInitial}`);
-    } else {
-      logger.info(
-        `no transactions found to resume indexing, starting from the beginning at block ${fromBlockNumberInitial}`,
-      );
-    }
-  } else {
-    const session = await mongooseConnection.startSession();
-    // Clean up the database
-    await session.withTransaction(async () => {
-      for (const modelName of mongooseConnection.modelNames()) {
-        await mongooseConnection.model(modelName).deleteMany();
+  const startBlockWatcher = () => {
+    // Clean up existing watcher if any
+    if (unwatchBlocks) {
+      try {
+        unwatchBlocks();
+      } catch (error) {
+        logger?.warn('Error cleaning up previous block watcher', { error });
       }
+    }
+
+    try {
+      unwatchBlocks = client.watchBlocks({
+        includeTransactions: false,
+        onBlock(block) {
+          try {
+            indexerState.updateLatestBlockNumber(block.number, logger);
+
+            // Save the block database
+            retry(
+              async () => {
+                await handleSaveBlock(
+                  { mongooseModels, blockInfoProvider },
+                  block,
+                );
+              },
+              buildRetryOptions({
+                name: 'handleSaveBlock',
+                verbose: true,
+                retries: 3,
+              }),
+            );
+          } catch (error) {
+            // Handle validation errors (e.g., chain reorganization)
+            logger?.warn('Error updating latest block number', {
+              error: error instanceof Error ? error.message : String(error),
+              blockNumber: block.number?.toString(),
+            });
+            // Don't restart watcher for validation errors, just log and continue
+          }
+        },
+        onError(error) {
+          logger?.error(
+            'error in public client watchBlocks, will restart watcher',
+            { error },
+          );
+          // Restart the watcher after a short delay
+          setTimeout(() => {
+            logger?.info('restarting block watcher after error');
+            startBlockWatcher();
+          }, 5000); // Wait 5 seconds before restarting
+        },
+      });
+    } catch (error) {
+      logger?.error('Failed to start block watcher, will retry', { error });
+      // Retry after a delay
+      setTimeout(() => {
+        startBlockWatcher();
+      }, 5000);
+    }
+  };
+
+  // Start the block watcher
+  startBlockWatcher();
+
+  // Index all the logs until the latest block
+  while (indexerState.shouldFetchLogs()) {
+    const stateBeforeLoop = indexerState.getState();
+    logger?.debug('indexer loop iteration', {
+      indexerId: indexerState.toJSON().id,
+      range: stateBeforeLoop.range,
+      latestBlock: stateBeforeLoop.latestBlock,
+      shouldFetchLogs: indexerState.shouldFetchLogs(),
     });
-    await session.commitTransaction();
-    await session.endSession();
-    // Save the Gnosis Pay tokens to the database
-    await saveGnosisPayTokensToDatabase(mongooseModels.gnosisPayTokenModel, [...gnosisPayTokens, gnoToken]);
+    const { range } = indexerState.getState();
+
+    try {
+      await handleRange({
+        ...params,
+        client: archiveClient,
+        range,
+        indexerState,
+        blockInfoProvider,
+        indexerCheckpointModel,
+      });
+    } catch (error) {
+      logger?.error('Error handling range, will continue to next range', {
+        error: error instanceof Error ? error.message : String(error),
+        range,
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      // Continue to next range instead of crashing
+      // Move to next range to avoid getting stuck on the same range
+      const FOLLOWING_MODE_THRESHOLD = 10;
+      const FOLLOWING_BLOCK_SIZE = 10;
+      const { distanceToLatestBlock } = indexerState.getState();
+      const isFollowingMode = distanceToLatestBlock <= FOLLOWING_MODE_THRESHOLD;
+      indexerState.moveToNextBlockRange({
+        logger,
+        blockSize: isFollowingMode ? FOLLOWING_BLOCK_SIZE : undefined,
+      });
+      continue;
+    }
+
+    // When close to the head, switch to following mode with smaller block sizes
+    // This allows the indexer to follow the chain head efficiently instead of waiting hours
+    const FOLLOWING_MODE_THRESHOLD = 10; // Switch to following mode when within 10 blocks of head
+    const FOLLOWING_BLOCK_SIZE = 10; // Process 20 blocks at a time when following the head
+
+    const { distanceToLatestBlock } = indexerState.getState();
+    const isFollowingMode = distanceToLatestBlock <= FOLLOWING_MODE_THRESHOLD;
+
+    // Move to the next block range, using smaller block size in following mode
+    indexerState.moveToNextBlockRange({
+      logger,
+      blockSize: isFollowingMode ? FOLLOWING_BLOCK_SIZE : undefined,
+    });
+
+    // Save checkpoint after successfully processing a range
+    const { range: currentRange } = indexerState.getState();
+    const indexerId = indexerState.toJSON().id;
+    try {
+      await saveIndexerCheckpoint(
+        indexerCheckpointModel,
+        indexerId,
+        currentRange.toBlock,
+      );
+      logger?.debug('saved indexer checkpoint', {
+        indexerId,
+        lastProcessedBlock: currentRange.toBlock,
+      });
+    } catch (error) {
+      logger?.warn('failed to save indexer checkpoint', {
+        indexerId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      // Don't throw - checkpoint saving failure shouldn't stop indexing
+    }
+
+    if (isFollowingMode) {
+      // In following mode, wait for just a few blocks instead of the full fetchBlockSize
+      const { range: nextRange } = indexerState.getState();
+      const targetBlockNumber = nextRange.toBlock + FOLLOWING_BLOCK_SIZE;
+
+      logger?.info(
+        `following head: waiting for block ${targetBlockNumber} to continue indexing`,
+        {
+          operation: 'waitForBlock',
+          targetBlockNumber,
+          mode: 'following',
+          followingBlockSize: FOLLOWING_BLOCK_SIZE,
+        },
+      );
+
+      try {
+        await waitForBlock({
+          client,
+          blockNumber: BigInt(targetBlockNumber),
+          timeoutMs: 10 * 60 * 1000, // 10 minutes timeout for following mode
+        });
+      } catch (error) {
+        logger?.error(
+          'Error waiting for block, will check if we can continue',
+          {
+            error: error instanceof Error ? error.message : String(error),
+            targetBlockNumber,
+          },
+        );
+        // Check current latest block - maybe we can continue without waiting
+        try {
+          const currentLatestBlock = await client.getBlockNumber();
+          indexerState.updateLatestBlockNumber(currentLatestBlock, logger);
+          // If we're still behind, continue the loop which will try again
+          // If we've caught up, the loop will exit naturally
+        } catch (getBlockError) {
+          logger?.error(
+            'Failed to get current block number after waitForBlock error',
+            {
+              error: getBlockError instanceof Error ? getBlockError.message : String(getBlockError),
+            },
+          );
+          // Wait a bit before retrying to avoid tight loop
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+      }
+    }
   }
 
-  // Initialize the indexer state
-  await initializeIndexerState(client, fetchBlockSize, fromBlockNumberInitial, logger);
-
-  // Watch for new blocks
-  client.watchBlocks({
-    includeTransactions: false,
-    onBlock(block) {
-      updateLatestBlockNumber(block.number, logger);
-
-      handleBlock({
-        blockNumber: block.number,
-        client,
-        logger,
-        mongooseModels,
-      });
-    },
-    onError(error) {
-      logger.error('error in public client watchBlocks', { error });
+  // Log why the indexer stopped
+  const finalState = indexerState.getState();
+  logger?.info('indexer stopped', {
+    indexerId: indexerState.toJSON().id,
+    reason: 'shouldFetchLogs returned false',
+    finalState: {
+      range: finalState.range,
+      latestBlock: finalState.latestBlock,
+      shouldFetchLogs: indexerState.shouldFetchLogs(),
     },
   });
 
-  // Index all the logs until the latest block
-  while (shouldFetchLogs(getIndexerState())) {
-    const { range } = getIndexerState();
-
-    await handleRange({
-      client,
-      mongooseModels,
-      logger,
-      range,
-    });
-
-    // Move to the next block range
-    const { distanceToLatestBlockNumber } = getIndexerState();
-
-    moveToNextBlockRange(logger);
-
-    // Wait for the next block if we're within a distance of 10 blocks
-    if (distanceToLatestBlockNumber <= 10n) {
-      const targetBlockNumber = range.toBlockNumber + fetchBlockSize + 10n;
-
-      logger.info(`waiting for block ${targetBlockNumber} to continue indexing`, {
-        operation: 'waitForBlock',
-        targetBlockNumber,
-      });
-
-      await waitForBlock({
-        client,
-        blockNumber: targetBlockNumber,
-      });
+  // Clean up block watcher
+  if (unwatchBlocks) {
+    try {
+      unwatchBlocks();
+    } catch (error) {
+      logger?.warn('Error cleaning up block watcher', { error });
     }
+  }
+
+  // Unregister indexer ID from active indexers set
+  try {
+    await indexerState.unregisterIndexerId(logger);
+  } catch (error) {
+    logger?.warn('Error unregistering indexer ID', { error });
   }
 }
 
-async function handleRange({
-  client,
-  mongooseModels,
-  logger,
-  range,
-}: {
-  client: GnosisChainPublicClient;
-  mongooseModels: StartIndexingParamsType['mongooseModels'];
-  range: IndexerStateAtomType['range'];
-  logger: Logger;
-}) {
-  const scopeLogger = logger.child({
+async function handleRange(
+  params: HandleRangeParamsType,
+) {
+  const {
+    client,
+    mongooseModels,
+    logger,
+    range,
+    indexerState,
+    blockInfoProvider,
+    redisCache,
+  } = params;
+  const startTime = Date.now();
+  const rangeLogger = logger?.child({
     operation: 'fetchLogs',
     range,
   });
 
   const getLogsCommonParams = {
     client,
-    fromBlock: range.fromBlockNumber,
-    toBlock: range.toBlockNumber,
+    fromBlock: BigInt(range.fromBlock),
+    toBlock: BigInt(range.toBlock),
     verbose: true,
   };
 
-  scopeLogger.info(`fetching logs from ${range.fromBlockNumber} to ${range.toBlockNumber}`);
+  rangeLogger?.info(
+    `fetching logs from ${range.fromBlock} to ${range.toBlock}`,
+  );
 
   // Fetch all the logs
   const spendLogs = await getGnosisPaySpendLogs(getLogsCommonParams);
   const refundLogs = await getGnosisPayRefundLogs(getLogsCommonParams);
-  const gnosisTokenTransferLogs = await getGnosisTokenTransferLogs(getLogsCommonParams);
-  const gnosisPayRewardDistributionLogs = await getGnosisPayRewardDistributionLogs(getLogsCommonParams);
+  const gnosisTokenTransferLogs = await getTokenTransferLogs(
+    getLogsCommonParams,
+  );
+  const gnosisPayRewardDistributionLogs = await getTokenTransferLogs({
+    ...getLogsCommonParams,
+    address: gnoToken.address,
+    from: [payoutSafes.gnosisPay],
+  });
+  const metriRewardDistributionLogs = await getTokenTransferLogs({
+    ...getLogsCommonParams,
+    address: gnoToken.address,
+    from: payoutSafes.metri,
+  });
   const claimOgNftLogs = await getGnosisPayClaimOgNftLogs(getLogsCommonParams);
 
-  scopeLogger.debug(`found ${spendLogs.length} spend logs`, {
-    logsType: 'spendLogs',
-  });
-  scopeLogger.debug(`found ${refundLogs.length} refund logs`, {
-    logsType: 'refundLogs',
-  });
-  scopeLogger.debug(`found ${gnosisTokenTransferLogs.length} gnosis token transfer logs`, {
-    logsType: 'gnosisTokenTransferLogs',
-  });
-  scopeLogger.debug(`found ${gnosisPayRewardDistributionLogs.length} gnosis pay reward distribution logs`, {
-    logsType: 'gnosisPayRewardDistributionLogs',
-  });
-  scopeLogger.debug(`found ${claimOgNftLogs.length} claim og nft logs`, {
-    logsType: 'claimOgNftLogs',
-  });
+  const logsCount = {
+    spendLogs: spendLogs.length,
+    refundLogs: refundLogs.length,
+    gnosisTokenTransferLogs: gnosisTokenTransferLogs.length,
+    gnosisPayRewardDistributionLogs: gnosisPayRewardDistributionLogs.length,
+    metriRewardDistributionLogs: metriRewardDistributionLogs.length,
+    claimOgNftLogs: claimOgNftLogs.length,
+  };
 
-  await handleSpendLogs({
-    client,
-    mongooseModels,
-    logs: spendLogs,
-    logger,
-  });
+  rangeLogger?.info('logs fetched', { logsCount });
 
-  await handleRefundLogs({
-    client,
-    mongooseModels,
-    logs: refundLogs,
-    logger,
-  });
+  // Process other handlers synchronously
+  const logHandlers = [
+    { handler: handleSpendLogs, logs: spendLogs, name: 'spend' },
+    { handler: handleRefundLogs, logs: refundLogs, name: 'refund' },
+    {
+      handler: handleGnosisPayRewardsDistributionLogs,
+      logs: gnosisPayRewardDistributionLogs,
+      name: 'gnosisPayRewardDistribution',
+    },
+    {
+      handler: handleGnosisPayRewardsDistributionLogs,
+      logs: metriRewardDistributionLogs,
+      name: 'metriRewardDistribution',
+    },
+    {
+      handler: handleGnosisPayOgNftTransferLogs,
+      logs: claimOgNftLogs,
+      name: 'ogNftClaim',
+    },
+  ];
 
-  await handleGnosisTokenTransferLogs({
+  for (const { handler, logs } of logHandlers) {
+    await handler({
+      client,
+      mongooseModels,
+      logs: logs as never,
+      logger,
+      blockInfoProvider,
+      redisCache,
+    });
+  }
+
+  // Start GNO token transfer handler asynchronously (fire and forget)
+  handleGnosisTokenTransferLogs({
     client,
     mongooseModels,
     logs: gnosisTokenTransferLogs,
     logger,
+    blockInfoProvider,
+    redisCache,
   });
 
-  await handleGnosisPayRewardsDistributionLogs({
+  // Run post-processing operations asynchronously (fire and forget)
+  // This includes checking for missing token snapshots, taking token prices, and saving blocks
+  // Blocks are saved incrementally so the indexer can resume from the latest saved block
+  runRangePostProcessingOperations({
+    ...range,
     client,
     mongooseModels,
-    logs: gnosisPayRewardDistributionLogs,
     logger,
-  });
-
-  await handleGnosisPayOgNftTransferLogs({
-    client,
-    mongooseModels,
-    logs: claimOgNftLogs,
-    logger,
-  });
-
-  // Among the block range, we need to record the token prices
-  for (let blockNumber = range.fromBlockNumber; blockNumber <= range.toBlockNumber; blockNumber++) {
-    await handleBlock({
-      blockNumber,
-      client,
-      mongooseModels,
-      logger,
+    blockInfoProvider,
+    redisCache,
+  })
+    .then(() => {
+      rangeLogger?.debug('completed post-processing operations', { range });
+    })
+    .catch((error) => {
+      rangeLogger?.error('error in post-processing operations', {
+        error,
+        range,
+      });
     });
-  }
-}
 
-/**
- * Check if the indexer should fetch logs
- * @param state - the indexer state
- * @returns true if the indexer should fetch logs, false otherwise
- */
-function shouldFetchLogs(state: IndexerStateAtomType) {
-  const { range, latestBlockNumber } = state;
+  // Calculate processing time and update average
+  const endTime = Date.now();
+  const processingTimeSeconds = (endTime - startTime) / 1000;
+  indexerState.updateAverageProcessingTime(processingTimeSeconds, logger);
 
-  const should = range.toBlockNumber <= latestBlockNumber;
+  const state = indexerState.getState();
+  const estimatedTimeToChainHead = state.estimates?.timeToHeadSec;
+  const estimatedTimeFormatted = estimatedTimeToChainHead
+    ? `${(estimatedTimeToChainHead / 60).toFixed(2)} minutes (${(estimatedTimeToChainHead / 3600).toFixed(2)} hours)`
+    : 'N/A';
 
-  return should;
+  rangeLogger?.info(
+    `range processed in ${processingTimeSeconds.toFixed(2)} seconds`,
+    {
+      processingTimeSeconds: Math.round(processingTimeSeconds * 100) / 100,
+      averageProcessingTimeSeconds: state.processing?.avgTimeSec
+        ? Math.round((state.processing.avgTimeSec as number) * 100) / 100
+        : undefined,
+      estimatedTimeToChainHeadSeconds: estimatedTimeToChainHead,
+      estimatedTimeToChainHeadFormatted: estimatedTimeFormatted,
+      distanceToLatestBlock: state.distanceToLatestBlock,
+      syncPercentage: state.syncPct,
+    },
+  );
 }

@@ -1,15 +1,15 @@
 import {
   Address,
-  PublicClient,
-  Transport,
   formatUnits,
   getContract,
   isAddress,
   isAddressEqual,
+  PublicClient,
+  Transport,
   zeroAddress,
 } from 'viem';
 import { gnosis } from 'viem/chains';
-import type { ConditionalReturnType } from './utils';
+import type { ConditionalReturnType } from './utils/types.js';
 
 type TokenOraclePriceDataType = {
   price: number;

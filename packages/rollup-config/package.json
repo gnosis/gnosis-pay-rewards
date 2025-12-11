@@ -1,5 +1,5 @@
 {
-  "name": "@karpatkey/rollup-config",
+  "name": "@kpk/rollup-config",
   "description": "Rollup config. Use this library to swiftly create a rollup config for your library.",
   "type": "module",
   "main": "index.js",

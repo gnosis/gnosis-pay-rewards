@@ -1,4 +1,4 @@
-import { Address, PublicClient, Transport, erc20Abi } from 'viem';
+import { Address, erc20Abi, PublicClient, Transport } from 'viem';
 
 export async function getTokenBalanceOf({
   client,

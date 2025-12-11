@@ -1,5 +1,5 @@
 import { Narrow } from 'abitype';
-import { GetContractReturnType, PublicClient, getContract } from 'viem';
+import { getContract, GetContractReturnType, PublicClient } from 'viem';
 
 export const MULTICALL_CONTRACT_ADDRESS = '0xcA11bde05977b3631167028862bE2a173976CA11' as const;
 

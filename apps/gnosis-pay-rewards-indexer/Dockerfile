@@ -16,7 +16,7 @@ FROM base AS pruner
 
 WORKDIR /app
 COPY . .
-RUN turbo prune --scope @karpatkey/gnosis-pay-rewards-indexer --docker
+RUN turbo prune --scope @kpk/gnosis-pay-rewards-indexer --docker
 
 # Build the project
 FROM base AS builder
@@ -34,7 +34,7 @@ RUN --mount=type=cache,id=pnpm,target=~/.pnpm-store pnpm install --frozen-lockfi
 # Copy source code of isolated subworkspace
 COPY --from=pruner /app/out/full/ .
 
-RUN turbo build --filter=@karpatkey/gnosis-pay-rewards-indexer
+RUN turbo build --filter=@kpk/gnosis-pay-rewards-indexer
 RUN --mount=type=cache,id=pnpm,target=~/.pnpm-store pnpm prune --prod --no-optional
 RUN rm -rf ./**/*/src
 
@@ -49,10 +49,7 @@ WORKDIR /app
 COPY --from=builder --chown=nodejs:nodejs /app .
 WORKDIR /app/apps/gnosis-pay-rewards-indexer
 
-ARG SOCKET_IO_SERVER_PORT=4000
-ENV SOCKET_IO_SERVER_PORT=${SOCKET_IO_SERVER_PORT}
 ENV NODE_ENV=production
 ENV IS_DOCKER=true
-EXPOSE ${SOCKET_IO_SERVER_PORT}
 
 CMD ["node", "dist/index.js"]

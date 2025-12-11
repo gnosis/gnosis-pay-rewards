@@ -1,22 +1,21 @@
 import type { Server as SocketIoServer } from 'socket.io';
 
-import { GnosisPayTransactionFieldsType_Populated } from './database/spendTransaction';
-import { WeekSnapshotDocumentFieldsType } from './database/weekSnapshot';
+import type { WeekSnapshotDocumentFieldsType } from './database/global-week-snapshot.js';
+import type { GnosisPayTransactionFieldsType } from './database/gnosis-pay-transaction-zod.js';
 
 export interface GnosisPayRewardsServerToClientEventsType {
-  newTransaction: (data: GnosisPayTransactionFieldsType_Populated) => void;
-  recentTransactions: (data: GnosisPayTransactionFieldsType_Populated[]) => void;
-  newSpendTransaction: (data: GnosisPayTransactionFieldsType_Populated) => void;
-  recentSpendTransactions: (data: GnosisPayTransactionFieldsType_Populated[]) => void;
-  newRefundTransaction: (data: GnosisPayTransactionFieldsType_Populated) => void;
-  recentRefundTransactions: (data: GnosisPayTransactionFieldsType_Populated[]) => void;
+  newTransaction: (data: GnosisPayTransactionFieldsType) => void;
+  recentTransactions: (data: GnosisPayTransactionFieldsType[]) => void;
+  newSpendTransaction: (data: GnosisPayTransactionFieldsType) => void;
+  recentSpendTransactions: (data: GnosisPayTransactionFieldsType[]) => void;
+  newRefundTransaction: (data: GnosisPayTransactionFieldsType) => void;
+  recentRefundTransactions: (data: GnosisPayTransactionFieldsType[]) => void;
   currentWeekMetricsSnapshot: (data: WeekSnapshotDocumentFieldsType) => void;
   currentWeekMetricsSnapshotUpdated: (data: WeekSnapshotDocumentFieldsType) => void;
   weekMetricsSnapshotByTimestamp: (data: WeekSnapshotDocumentFieldsType | null) => void;
   allWeekMetricsSnapshots: (data: WeekSnapshotDocumentFieldsType[]) => void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
 export type GnosisPayRewardsClientToServerEventsType = {
   getRecentTransactions: (limit: number) => void;
   getCurrentWeekMetricsSnapshot: () => void;

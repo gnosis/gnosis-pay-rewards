@@ -1,24 +1,18 @@
-import {
-  GnosisTokenBalanceSnapshotModelType,
-  WeekCashbackRewardModelType,
-  GnosisPaySafeAddressModelType,
-} from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
-import { WeekIdFormatType } from '@karpatkey/gnosis-pay-rewards-sdk';
+import { CreateModelsReturnType } from '@kpk/gnosis-pay-rewards-sdk/mongoose';
+import { tokenBalanceSnapshotTokens, WeekIdFormatType } from '@kpk/gnosis-pay-rewards-sdk';
 import 'mongoose-paginate-v2';
 import { Logger } from 'winston';
 
-import { takeGnosisTokenBalanceSnapshot } from '../process/processGnosisTokenTransferLog.js';
-import { GnosisChainPublicClient } from '../process/types.js';
+import { takeTokenBalanceSnapshot } from '../process/token-transfer.ts';
+import { GnosisChainPublicClient } from '../process/types.ts';
+import type { BlockInfoProvider } from '../lib/block-info-provider.ts';
 
 type AddMissingWeeksGnosisTokenBalanceSnapshotParams = {
   safeAddress: `0x${string}`;
-  mongooseModels: {
-    gnosisPaySafeAddressModel: GnosisPaySafeAddressModelType;
-    gnosisTokenBalanceSnapshotModel: GnosisTokenBalanceSnapshotModelType;
-    weekCashbackRewardModel: WeekCashbackRewardModelType;
-  };
+  mongooseModels: CreateModelsReturnType;
   client: GnosisChainPublicClient;
   logger: Logger;
+  blockInfoProvider: BlockInfoProvider;
 };
 
 export async function addMissingWeeksGnosisTokenBalanceSnapshot({
@@ -26,16 +20,17 @@ export async function addMissingWeeksGnosisTokenBalanceSnapshot({
   safeAddress,
   logger,
   client,
+  blockInfoProvider,
 }: AddMissingWeeksGnosisTokenBalanceSnapshotParams) {
   safeAddress = safeAddress.toLowerCase() as `0x${string}`;
 
-  const { gnosisTokenBalanceSnapshotModel } = mongooseModels;
+  const { tokenBalanceSnapshotModel } = mongooseModels;
 
   // Get all weeks ids
-  const allWeeksIds = (await gnosisTokenBalanceSnapshotModel.distinct('weekId')) as WeekIdFormatType[];
+  const allWeeksIds = (await tokenBalanceSnapshotModel.distinct('week')) as WeekIdFormatType[];
 
   // Get all weeks ids with snapshots for the safe
-  const allSafeWeeksIdsWithSnapshots = (await gnosisTokenBalanceSnapshotModel.distinct('weekId', {
+  const allSafeWeeksIdsWithSnapshots = (await tokenBalanceSnapshotModel.distinct('week', {
     safe: safeAddress,
   })) as WeekIdFormatType[];
 
@@ -44,9 +39,9 @@ export async function addMissingWeeksGnosisTokenBalanceSnapshot({
 
   for (const missingWeekId of missingWeeksIds) {
     // Find a reference to the block number among the other snapshots of the same week
-    const otherSnapshotReference = await gnosisTokenBalanceSnapshotModel
-      .findOne({ weekId: missingWeekId }, { blockNumber: 1 })
-      .sort({ number: -1 })
+    const otherSnapshotReference = await tokenBalanceSnapshotModel
+      .findOne({ week: missingWeekId }, { block: 1 })
+      .sort({ block: -1 })
       .limit(1)
       .lean();
 
@@ -55,11 +50,29 @@ export async function addMissingWeeksGnosisTokenBalanceSnapshot({
       continue;
     }
 
-    await takeGnosisTokenBalanceSnapshot({
-      ...mongooseModels,
-      blockNumber: BigInt(otherSnapshotReference.blockNumber),
-      safeAddress,
-      client,
-    });
+    // Take snapshots for all tokens
+    await Promise.all(
+      tokenBalanceSnapshotTokens.map((token) =>
+        takeTokenBalanceSnapshot(
+          {
+            client,
+            tokenBalanceSnapshotModel: mongooseModels.tokenBalanceSnapshotModel,
+            safeWeekRewardsSnapshotModel: mongooseModels.safeWeekRewardsSnapshotModel,
+            safeModel: mongooseModels.gnosisPaySafeModel,
+            blockInfoProvider,
+          },
+          {
+            address: safeAddress,
+            token,
+            blockNumber: BigInt(otherSnapshotReference.block),
+          },
+        ).catch((error) => {
+          logger.error(
+            `Failed to take token snapshot for ${safeAddress} token ${token.symbol}:`,
+            error,
+          );
+        })
+      ),
+    );
   }
 }

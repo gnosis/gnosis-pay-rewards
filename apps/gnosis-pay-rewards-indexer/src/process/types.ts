@@ -1,36 +1,26 @@
 import {
-  GnosisPayTransactionFieldsType_Populated,
-  GnosisPayTransactionFieldsType_Unpopulated,
-  WeekCashbackRewardDocumentFieldsType_Populated,
+  GnosisPayTransactionFieldsType,
+  SafeWeekRewardsSnapshotDocumentFieldsType,
   WeekSnapshotDocumentFieldsType,
-} from '@karpatkey/gnosis-pay-rewards-sdk';
-import {
-  GnosisPaySafeAddressDocumentFieldsType_Unpopulated,
-  GnosisTokenBalanceSnapshotModelType,
-  WeekCashbackRewardModelType,
-} from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
-import { Model } from 'mongoose';
-import { PublicClient, Transport } from 'viem';
-import { gnosis } from 'viem/chains';
-
-export type MongooseConfiguredModels = {
-  gnosisPayTransactionModel: Model<GnosisPayTransactionFieldsType_Unpopulated>;
-  gnosisPaySafeAddressModel: Model<GnosisPaySafeAddressDocumentFieldsType_Unpopulated>;
-  weekCashbackRewardModel: WeekCashbackRewardModelType;
-  weekMetricsSnapshotModel: Model<WeekSnapshotDocumentFieldsType>;
-  gnosisTokenBalanceSnapshotModel: GnosisTokenBalanceSnapshotModelType;
-};
+} from '@kpk/gnosis-pay-rewards-sdk';
+import { CreateModelsReturnType } from '@kpk/gnosis-pay-rewards-sdk/mongoose';
+import type { BlockInfoProvider } from '../lib/block-info-provider.ts';
+import type { PublicClient, Transport } from 'viem';
+import type { gnosis } from 'viem/chains';
+import type { RedisCache } from '../lib/redis-cache.ts';
 
 export type GnosisChainPublicClient = PublicClient<Transport, typeof gnosis>;
 
 export type ProcessLogFunctionParams<LogType extends Record<string, unknown>> = {
   client: GnosisChainPublicClient;
   log: LogType;
-  mongooseModels: MongooseConfiguredModels;
+  mongooseModels: CreateModelsReturnType;
+  blockInfoProvider: BlockInfoProvider;
+  redisCache: RedisCache;
 };
 
 export type ProcessLogFnDataType = {
-  gnosisPayTransaction: GnosisPayTransactionFieldsType_Populated;
-  weekCashbackReward: WeekCashbackRewardDocumentFieldsType_Populated;
+  gnosisPayTransaction: GnosisPayTransactionFieldsType;
   weekMetricsSnapshot: WeekSnapshotDocumentFieldsType;
+  safeWeekRewardsSnapshot: SafeWeekRewardsSnapshotDocumentFieldsType;
 };

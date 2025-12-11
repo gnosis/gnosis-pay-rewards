@@ -1,87 +1,63 @@
-import { config } from 'dotenv';
-import { z } from 'zod';
+import { load } from '@std/dotenv';
+import { envZodSchema } from './env-zod.ts';
+import z from 'zod';
 
-// Load the config
-config();
-
-const env = process.env;
-
-// Load the .env.development file in development mode
-if (env.NODE_ENV === 'development') {
-  config({ path: '.env.development' });
+function toAbsoluteEnvPath(envPath: string) {
+  const currentFileUrl = new URL(import.meta.url);
+  const projectRoot = new URL('../../', currentFileUrl);
+  const projectRootPath = projectRoot.pathname;
+  return `${projectRootPath}${envPath}`;
 }
 
-const envSchema = z
-  .object({
-    // Required variables
-    JSON_RPC_PROVIDER_GNOSIS: z.string().url(),
-    WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS: z.string().optional(),
-    SENTRY_DSN: z.string().optional(),
-    MONGODB_URI: z.string().min(1),
-    REDIS_URL: z.string().url(),
-    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-    IS_DOCKER: z
-      .string()
-      .transform((val) => val === 'true')
-      .default('false'),
-    HTTP_SERVER_PORT: z.coerce.number().default(3000),
-    HTTP_SERVER_HOST: z.string().default('0.0.0.0'),
-    SOCKET_IO_SERVER_PORT: z.coerce.number().default(4000),
-    MONGODB_DEBUG: z
-      .string()
-      .transform((val) => val === 'true')
-      .default('false'),
-    LOGGER_MONGODB_TRANSPORT_ENABLED: z
-      .string()
-      .transform((val) => val.toLowerCase() === 'true')
-      .default('false'),
-    LOGGER_MONGODB_TRANSPORT_URI: z.string().url().optional(),
-    /**
-     * Whether to resume indexing from the last block number
-     */
-    RESUME_INDEXING: z
-      .string()
-      .transform((val) => val.toLowerCase() === 'true')
-      .default('false'),
-    /**
-     * How many blocks to fetch at a time
-     */
-    FETCH_BLOCK_SIZE: z
-      .string()
-      .transform((val) => BigInt(val))
-      .default('60'),
-    /**
-     * How many blocks to wait before taking a snapshot of the Gnosis token balances
-     */
-    GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL: z
-      .string()
-      .transform((val) => BigInt(val))
-      .default('15000'),
-    /**
-     * How many blocks to wait before recording the token price
-     */
-    TOKEN_PRICE_SNAPSHOT_BLOCK_INTERVAL: z
-      .string()
-      .transform((val) => BigInt(val))
-      .default('720'), // ~1 hour at 5 seconds per block
-    ENABLE_INDEXING: z
-      .string()
-      .transform((val) => val.toLowerCase() === 'true')
-      .default('false'),
-  })
-  .refine(
-    (data) => {
-      if (data.LOGGER_MONGODB_TRANSPORT_ENABLED === true) {
-        return data.LOGGER_MONGODB_TRANSPORT_URI !== undefined;
+async function validateEnv() {
+  try {
+    // Load environment variables from the appropriate file
+    const envPath = Deno.env.get('NODE_ENV') === 'production'
+      ? toAbsoluteEnvPath('.env.production')
+      : toAbsoluteEnvPath('.env.development');
+
+    const envVars = await load({ envPath });
+
+    // Merge with Deno.env (which may contain variables from --env-file)
+    // Deno.env takes precedence over file values
+    const mergedEnvVars = {
+      ...envVars,
+      ...Deno.env.toObject(),
+    };
+
+    // Validate and transform environment variables
+    const validatedEnv = envZodSchema.parse(mergedEnvVars);
+
+    return validatedEnv;
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const missingVars = error.errors.filter((err) => err.message === 'Required').map((err) => err.path.join('.'));
+
+      const invalidVars = error.errors
+        .filter((err) => err.message !== 'Required')
+        .map((err) => `${err.path.join('.')}: ${err.message}`);
+
+      console.error('❌ Invalid environment variables:');
+
+      if (missingVars.length > 0) {
+        console.error('Missing required variables:');
+        missingVars.forEach((variable) => console.error(`  - ${variable}`));
       }
 
-      return true;
-    },
-    {
-      path: ['LOGGER_MONGODB_TRANSPORT_URI'],
-      message: 'LOGGER_MONGODB_TRANSPORT_URI is required when LOGGER_MONGODB_TRANSPORT_ENABLED is true',
-    },
-  );
+      if (invalidVars.length > 0) {
+        console.error('Invalid variables:');
+        invalidVars.forEach((message) => console.error(`  - ${message}`));
+      }
+
+      Deno.exit(1);
+    }
+
+    throw error;
+  }
+}
+
+// Validate and export environment variables
+const validatedEnv = await validateEnv();
 
 // Validate and parse environment variables
 // Replace individual exports with parsed values
@@ -89,13 +65,13 @@ export const {
   NODE_ENV,
   IS_DOCKER,
   HTTP_SERVER_PORT,
-  HTTP_SERVER_HOST,
-  SOCKET_IO_SERVER_PORT,
+  HTTP_SERVER_HOSTNAME,
   MONGODB_URI,
   MONGODB_DEBUG,
   SENTRY_DSN,
   JSON_RPC_PROVIDER_GNOSIS,
   WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS,
+  ARCHIVE_JSON_RPC_PROVIDER_GNOSIS,
   RESUME_INDEXING,
   FETCH_BLOCK_SIZE,
   GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL,
@@ -103,5 +79,12 @@ export const {
   ENABLE_INDEXING,
   LOGGER_MONGODB_TRANSPORT_ENABLED,
   LOGGER_MONGODB_TRANSPORT_URI,
+  LOGGER_FILE_TRANSPORT_ENABLED,
+  LOGGER_FILE_TRANSPORT_DIR,
+  LOGGER_FILE_TRANSPORT_FILENAME,
+  LOGGER_FILE_TRANSPORT_MAX_SIZE,
+  LOGGER_FILE_TRANSPORT_MAX_FILES,
   REDIS_URL,
-} = envSchema.parse(process.env);
+  THE_GRAPH_API_KEY,
+  INDEXER_ENABLE_CONSOLE_LOGGER,
+} = validatedEnv;

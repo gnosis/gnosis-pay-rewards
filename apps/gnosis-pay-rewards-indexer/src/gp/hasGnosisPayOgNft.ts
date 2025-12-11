@@ -1,5 +1,5 @@
-import { gnosisPayOgNftAddress, gnosisPayOgNftV2Address } from '@karpatkey/gnosis-pay-rewards-sdk';
-import { Address, PublicClient, Transport, erc721Abi } from 'viem';
+import { gnosisPayOgNftAddress, gnosisPayOgNftV2Address } from '@kpk/gnosis-pay-rewards-sdk';
+import { Address, erc721Abi, PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';
 
 export async function hasGnosisPayOgNft(

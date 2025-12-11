@@ -1,11 +1,13 @@
 module.exports = {
   apps: [
     {
-      name: 'gnosis-pay-rewards-indexer',
-      script: 'dist/index.js',
-      watch: '.',
+      name: 'gpr-indexer-v1',
+      script: 'src/start-all.ts',
+      ignore_watch: ['node_modules', 'dist', 'logs', 'data'],
       kill_timeout: 10000,
       instances: 1,
+      interpreter: 'deno',
+      interpreterArgs: 'run -A',
     },
   ],
   deploy: {

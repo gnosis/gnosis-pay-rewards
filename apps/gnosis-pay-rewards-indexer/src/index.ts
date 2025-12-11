@@ -1,69 +1,145 @@
-process.env.TZ = 'UTC'; // Set the timezone to UTC
-import './sentry.js'; // imported first to setup sentry
-import { gnosisChainPublicClient as client } from './publicClient.js';
-import { startIndexing, StartIndexingParamsType, startIoServers } from './core.js';
-import { ENABLE_INDEXING, FETCH_BLOCK_SIZE, MONGODB_URI, NODE_ENV, RESUME_INDEXING } from './config/env.js';
+import { gnosisChainArchiveClient as archiveClient, gnosisChainPublicClient as client } from './public-client.ts';
+import { startIndexer, StartIndexerParamsType, startIoServers } from './core.ts';
 import {
-  createBlockModel,
-  createConnection,
-  createGnosisPayRewardDistributionModel,
-  createGnosisPaySafeAddressModel,
-  createGnosisPayTokenPriceModel,
-  createGnosisPayTransactionModel,
-  createGnosisTokenBalanceSnapshotModel,
-  createTokenModel,
-  createWeekCashbackRewardModel,
-  createWeekMetricsSnapshotModel,
-} from '@karpatkey/gnosis-pay-rewards-sdk/mongoose';
-import { getLogger } from './logger.js';
+  ENABLE_INDEXING,
+  FETCH_BLOCK_SIZE,
+  HTTP_SERVER_HOSTNAME,
+  HTTP_SERVER_PORT,
+  INDEXER_ENABLE_CONSOLE_LOGGER,
+  MONGODB_DEBUG,
+  MONGODB_URI,
+  REDIS_URL,
+  RESUME_INDEXING,
+  THE_GRAPH_API_KEY,
+} from './config/env.ts';
+import { gnosisPayTokens, tokenBalanceSnapshotTokens } from '@kpk/gnosis-pay-rewards-sdk';
+import { createConnection, createModels, saveTokensToDatabase } from '@kpk/gnosis-pay-rewards-sdk/mongoose';
+import { getLogger } from './logger.ts';
+import { BlockInfoProvider } from './lib/block-info-provider.ts';
+import { createIndexerCheckpointModel } from './lib/indexer-checkpoint.ts';
+import { RedisCache } from './lib/redis-cache.ts';
+import { NOV_2025_INDEXER_ID, NOV_2025_START_BLOCK, OLD_INDEXER_ID, OLD_INDEXER_START_BLOCK } from './constants.ts';
+import { initializeIndexerWithCheckpoint } from './start-indexer.ts';
 
-async function main(resumeIndexing: boolean = RESUME_INDEXING) {
+async function main() {
   try {
     const logger = await getLogger();
 
-    logger.info('creating mongoose connection');
-
     const mongooseConnection = await createConnection(MONGODB_URI);
 
-    // Only enable debug mode in development
-    if (NODE_ENV === 'development') {
-      mongooseConnection.set('debug', true);
-    }
-    logger.info(`connected to mongodb at ${mongooseConnection.connection.host}`);
+    mongooseConnection.set('debug', MONGODB_DEBUG);
 
-    const mongooseModels: StartIndexingParamsType['mongooseModels'] = {
-      gnosisPaySafeAddressModel: createGnosisPaySafeAddressModel(mongooseConnection),
-      gnosisPayTransactionModel: createGnosisPayTransactionModel(mongooseConnection),
-      weekCashbackRewardModel: createWeekCashbackRewardModel(mongooseConnection),
-      weekMetricsSnapshotModel: createWeekMetricsSnapshotModel(mongooseConnection),
-      gnosisPayTokenModel: createTokenModel(mongooseConnection),
-      gnosisPayTokenPriceModel: createGnosisPayTokenPriceModel(mongooseConnection),
-      blockModel: createBlockModel(mongooseConnection),
-      gnosisTokenBalanceSnapshotModel: createGnosisTokenBalanceSnapshotModel(mongooseConnection),
-      gnosisPayRewardDistributionModel: createGnosisPayRewardDistributionModel(mongooseConnection),
+    logger.info(
+      `connected to mongodb at ${mongooseConnection.connection.host}`,
+    );
+
+    const mongooseModels = createModels(mongooseConnection);
+    const indexerCheckpointModel = createIndexerCheckpointModel(
+      mongooseConnection,
+    );
+
+    const redisCache = new RedisCache({ logger, url: REDIS_URL });
+
+    try {
+      await redisCache.connect();
+    } catch (error) {
+      logger.error('Error connecting to cache', { error });
+      throw error;
+    }
+
+    // Save the Gnosis Pay tokens and token balance snapshot tokens to the database
+    await saveTokensToDatabase(mongooseModels.tokenModel, [
+      ...gnosisPayTokens,
+      ...tokenBalanceSnapshotTokens,
+    ]);
+
+    // Initialize indexers with checkpoint support
+    const oldIndexerState = await initializeIndexerWithCheckpoint({
+      indexerId: OLD_INDEXER_ID,
+      defaultStartBlock: OLD_INDEXER_START_BLOCK,
+      fetchBlockSize: FETCH_BLOCK_SIZE,
+      indexerCheckpointModel,
+      client,
+      logger,
+      resumeIndexing: RESUME_INDEXING,
+      redisCache,
+    });
+
+    const indexerStateQ42025 = await initializeIndexerWithCheckpoint({
+      indexerId: NOV_2025_INDEXER_ID,
+      defaultStartBlock: NOV_2025_START_BLOCK,
+      fetchBlockSize: FETCH_BLOCK_SIZE,
+      indexerCheckpointModel,
+      client,
+      logger,
+      resumeIndexing: RESUME_INDEXING,
+      redisCache,
+    });
+
+    const blockInfoProvider = new BlockInfoProvider(
+      client,
+      archiveClient,
+      THE_GRAPH_API_KEY,
+      mongooseModels.blockModel,
+      logger,
+      redisCache,
+    );
+
+    const indexerStates = [oldIndexerState, indexerStateQ42025];
+    const startIndexerParams: Omit<StartIndexerParamsType, 'indexerState'> = {
+      client,
+      archiveClient,
+      mongooseModels,
+      blockInfoProvider,
+      indexerCheckpointModel,
+      redisCache,
     };
 
     // start the I/O servers
-    await startIoServers({
+    startIoServers({
       client,
       mongooseModels,
       logger,
+      blockInfoProvider,
+      getIndexerStates: () => {
+        return Promise.resolve(indexerStates.map((indexerState) => indexerState.toJSON()));
+      },
+      http: {
+        port: HTTP_SERVER_PORT,
+        hostname: HTTP_SERVER_HOSTNAME,
+      },
+      redisCache,
     });
 
     if (ENABLE_INDEXING === false) {
-      console.log('Indexing is disabled. Set ENABLE_INDEXING=true to enable indexing');
+      console.log(
+        'Indexing is disabled. Set ENABLE_INDEXING=true to enable indexing',
+      );
       return;
     }
 
-    // start the indexing process
-    await startIndexing({
-      client,
-      fetchBlockSize: FETCH_BLOCK_SIZE,
-      mongooseConnection,
-      mongooseModels,
-      logger,
-      resumeIndexing,
+    // Start all indexers concurrently with proper error handling
+    const indexerPromises = indexerStates.map((indexerState) => {
+      return startIndexer({
+        ...startIndexerParams,
+        indexerState,
+        logger: INDEXER_ENABLE_CONSOLE_LOGGER === true
+          ? logger.child({
+            indexerId: indexerState.toJSON().id,
+          })
+          : undefined,
+      }).catch((error) => {
+        logger.error('Indexer failed with error', {
+          indexerId: indexerState.toJSON().id,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        throw error;
+      });
     });
+
+    // Wait for all indexers to start (they run indefinitely, so this will only catch initial errors)
+    await Promise.all(indexerPromises);
   } catch (e) {
     console.error(e);
   }

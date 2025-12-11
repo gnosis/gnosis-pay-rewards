@@ -38,6 +38,9 @@ artifacts
 coverage*
 typechain
 typechain-types
+logs
+.logs
+logs/*
 
 yarn-error.log
 

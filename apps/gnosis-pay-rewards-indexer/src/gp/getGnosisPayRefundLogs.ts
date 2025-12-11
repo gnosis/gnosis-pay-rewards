@@ -1,14 +1,16 @@
 import {
+  circleUsdcToken,
   gnosisPaySpendAddress,
   moneriumEureToken,
   moneriumGbpToken,
   usdcBridgeToken,
-  circleUsdcToken,
-} from '@karpatkey/gnosis-pay-rewards-sdk';
-import retry from 'async-retry';
-import { buildRetryOptions, erc20TransferEventAbiItem, GnosisPayGetLogsParams } from './commons.js';
+} from '@kpk/gnosis-pay-rewards-sdk';
+import { retry } from '../lib/retry.ts';
+import { buildRetryOptions, erc20TransferEventAbiItem, GnosisPayGetLogsParams } from './commons.ts';
 
-export async function getGnosisPayRefundLogs({ client, fromBlock, toBlock, retries, verbose }: GnosisPayGetLogsParams) {
+export function getGnosisPayRefundLogs(
+  { client, fromBlock, toBlock, retries, verbose }: GnosisPayGetLogsParams,
+) {
   return retry(
     () =>
       client.getLogs({
@@ -18,9 +20,18 @@ export async function getGnosisPayRefundLogs({ client, fromBlock, toBlock, retri
         args: {
           from: gnosisPaySpendAddress,
         },
-        address: [moneriumEureToken, moneriumGbpToken, usdcBridgeToken, circleUsdcToken].map((token) => token.address),
+        address: [
+          moneriumEureToken,
+          moneriumGbpToken,
+          usdcBridgeToken,
+          circleUsdcToken,
+        ].map((token) => token.address),
         strict: false,
       }),
     buildRetryOptions({ name: 'getGnosisPayRefundLogs', verbose, retries }),
   );
 }
+
+export type GnosisPayRefundLogType = Awaited<
+  ReturnType<typeof getGnosisPayRefundLogs>
+>[number];

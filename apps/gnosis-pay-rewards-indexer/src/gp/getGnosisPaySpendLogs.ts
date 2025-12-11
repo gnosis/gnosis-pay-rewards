@@ -1,8 +1,10 @@
-import { gnosisPaySpendAddress, gnosisPaySpenderModuleAddress } from '@karpatkey/gnosis-pay-rewards-sdk';
-import retry from 'async-retry';
-import { buildRetryOptions, GnosisPayGetLogsParams } from './commons.js';
+import { gnosisPaySpendAddress, gnosisPaySpenderModuleAddress } from '@kpk/gnosis-pay-rewards-sdk';
+import { retry } from '../lib/retry.ts';
+import { buildRetryOptions, GnosisPayGetLogsParams } from './commons.ts';
 
-export async function getGnosisPaySpendLogs({ client, fromBlock, toBlock, retries, verbose }: GnosisPayGetLogsParams) {
+export function getGnosisPaySpendLogs(
+  { client, fromBlock, toBlock, retries, verbose }: GnosisPayGetLogsParams,
+) {
   return retry(
     () =>
       client.getLogs({
@@ -19,13 +21,32 @@ export async function getGnosisPaySpendLogs({ client, fromBlock, toBlock, retrie
   );
 }
 
+export type GnosisPaySpendLogType = Awaited<
+  ReturnType<typeof getGnosisPaySpendLogs>
+>[number];
+
 export const gnosisPaySpendEventAbiItem = {
   name: 'Spend',
   type: 'event',
   inputs: [
     { indexed: false, internalType: 'address', name: 'asset', type: 'address' },
-    { indexed: false, internalType: 'address', name: 'account', type: 'address' },
-    { indexed: false, internalType: 'address', name: 'receiver', type: 'address' },
-    { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
+    {
+      indexed: false,
+      internalType: 'address',
+      name: 'account',
+      type: 'address',
+    },
+    {
+      indexed: false,
+      internalType: 'address',
+      name: 'receiver',
+      type: 'address',
+    },
+    {
+      indexed: false,
+      internalType: 'uint256',
+      name: 'amount',
+      type: 'uint256',
+    },
   ],
 } as const;

@@ -1,16 +1,11 @@
-import { GnosisPayTransactionType } from './spendTransaction';
+import { GnosisPayTransactionFieldsType, GnosisPayTransactionType } from './gnosis-pay-transaction-zod.js';
 
-type GnosisPayTransactionLeanFieldsType = {
-  type: GnosisPayTransactionType;
-  amountUsd: number;
-};
-
-export function calculateNetUsdVolume(transactions: GnosisPayTransactionLeanFieldsType[]) {
+export function calculateNetVolumeUSD(transactions: Pick<GnosisPayTransactionFieldsType, 'type' | 'valueUSD'>[]) {
   return transactions.reduce((acc, transaction) => {
     if (transaction.type === GnosisPayTransactionType.Spend) {
-      return acc + transaction.amountUsd;
+      return acc + transaction.valueUSD;
     } else {
-      return acc - transaction.amountUsd;
+      return acc - transaction.valueUSD;
     }
   }, 0);
 }

@@ -14,13 +14,29 @@ export const gnosisPaySpendModuleAbi = [
     name: 'AlreadyEnabledModule',
     type: 'error',
   },
-  { inputs: [{ internalType: 'bytes32', name: '', type: 'bytes32' }], name: 'HashAlreadyConsumed', type: 'error' },
+  {
+    inputs: [{ internalType: 'bytes32', name: '', type: 'bytes32' }],
+    name: 'HashAlreadyConsumed',
+    type: 'error',
+  },
   { inputs: [], name: 'InvalidInitialization', type: 'error' },
-  { inputs: [{ internalType: 'address', name: 'module', type: 'address' }], name: 'InvalidModule', type: 'error' },
+  {
+    inputs: [{ internalType: 'address', name: 'module', type: 'address' }],
+    name: 'InvalidModule',
+    type: 'error',
+  },
   { inputs: [], name: 'InvalidPageSize', type: 'error' },
-  { inputs: [{ internalType: 'address', name: 'sender', type: 'address' }], name: 'NotAuthorized', type: 'error' },
+  {
+    inputs: [{ internalType: 'address', name: 'sender', type: 'address' }],
+    name: 'NotAuthorized',
+    type: 'error',
+  },
   { inputs: [], name: 'NotInitializing', type: 'error' },
-  { inputs: [{ internalType: 'address', name: 'owner', type: 'address' }], name: 'OwnableInvalidOwner', type: 'error' },
+  {
+    inputs: [{ internalType: 'address', name: 'owner', type: 'address' }],
+    name: 'OwnableInvalidOwner',
+    type: 'error',
+  },
   {
     inputs: [{ internalType: 'address', name: 'account', type: 'address' }],
     name: 'OwnableUnauthorizedAccount',
@@ -30,59 +46,128 @@ export const gnosisPaySpendModuleAbi = [
   {
     anonymous: false,
     inputs: [
-      { indexed: true, internalType: 'address', name: 'previousAvatar', type: 'address' },
-      { indexed: true, internalType: 'address', name: 'newAvatar', type: 'address' },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'previousAvatar',
+        type: 'address',
+      },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'newAvatar',
+        type: 'address',
+      },
     ],
     name: 'AvatarSet',
     type: 'event',
   },
   {
     anonymous: false,
-    inputs: [{ indexed: false, internalType: 'address', name: 'module', type: 'address' }],
+    inputs: [
+      {
+        indexed: false,
+        internalType: 'address',
+        name: 'module',
+        type: 'address',
+      },
+    ],
     name: 'DisabledModule',
     type: 'event',
   },
   {
     anonymous: false,
-    inputs: [{ indexed: false, internalType: 'address', name: 'module', type: 'address' }],
+    inputs: [
+      {
+        indexed: false,
+        internalType: 'address',
+        name: 'module',
+        type: 'address',
+      },
+    ],
     name: 'EnabledModule',
     type: 'event',
   },
   {
     anonymous: false,
-    inputs: [{ indexed: true, internalType: 'address', name: 'module', type: 'address' }],
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'module',
+        type: 'address',
+      },
+    ],
     name: 'ExecutionFromModuleFailure',
     type: 'event',
   },
   {
     anonymous: false,
-    inputs: [{ indexed: true, internalType: 'address', name: 'module', type: 'address' }],
+    inputs: [
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'module',
+        type: 'address',
+      },
+    ],
     name: 'ExecutionFromModuleSuccess',
     type: 'event',
   },
   {
     anonymous: false,
-    inputs: [{ indexed: false, internalType: 'bytes32', name: '', type: 'bytes32' }],
+    inputs: [
+      {
+        indexed: false,
+        internalType: 'bytes32',
+        name: '',
+        type: 'bytes32',
+      },
+    ],
     name: 'HashExecuted',
     type: 'event',
   },
   {
     anonymous: false,
-    inputs: [{ indexed: false, internalType: 'bytes32', name: '', type: 'bytes32' }],
+    inputs: [
+      {
+        indexed: false,
+        internalType: 'bytes32',
+        name: '',
+        type: 'bytes32',
+      },
+    ],
     name: 'HashInvalidated',
     type: 'event',
   },
   {
     anonymous: false,
-    inputs: [{ indexed: false, internalType: 'uint64', name: 'version', type: 'uint64' }],
+    inputs: [
+      {
+        indexed: false,
+        internalType: 'uint64',
+        name: 'version',
+        type: 'uint64',
+      },
+    ],
     name: 'Initialized',
     type: 'event',
   },
   {
     anonymous: false,
     inputs: [
-      { indexed: true, internalType: 'address', name: 'previousOwner', type: 'address' },
-      { indexed: true, internalType: 'address', name: 'newOwner', type: 'address' },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'previousOwner',
+        type: 'address',
+      },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'newOwner',
+        type: 'address',
+      },
     ],
     name: 'OwnershipTransferred',
     type: 'event',
@@ -90,10 +175,30 @@ export const gnosisPaySpendModuleAbi = [
   {
     anonymous: false,
     inputs: [
-      { indexed: false, internalType: 'address', name: 'asset', type: 'address' },
-      { indexed: false, internalType: 'address', name: 'account', type: 'address' },
-      { indexed: false, internalType: 'address', name: 'receiver', type: 'address' },
-      { indexed: false, internalType: 'uint256', name: 'amount', type: 'uint256' },
+      {
+        indexed: false,
+        internalType: 'address',
+        name: 'asset',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'address',
+        name: 'account',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'address',
+        name: 'receiver',
+        type: 'address',
+      },
+      {
+        indexed: false,
+        internalType: 'uint256',
+        name: 'amount',
+        type: 'uint256',
+      },
     ],
     name: 'Spend',
     type: 'event',
@@ -101,8 +206,18 @@ export const gnosisPaySpendModuleAbi = [
   {
     anonymous: false,
     inputs: [
-      { indexed: true, internalType: 'address', name: 'previousTarget', type: 'address' },
-      { indexed: true, internalType: 'address', name: 'newTarget', type: 'address' },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'previousTarget',
+        type: 'address',
+      },
+      {
+        indexed: true,
+        internalType: 'address',
+        name: 'newTarget',
+        type: 'address',
+      },
     ],
     name: 'TargetSet',
     type: 'event',
@@ -212,7 +327,13 @@ export const gnosisPaySpendModuleAbi = [
     stateMutability: 'view',
     type: 'function',
   },
-  { inputs: [], name: 'renounceOwnership', outputs: [], stateMutability: 'nonpayable', type: 'function' },
+  {
+    inputs: [],
+    name: 'renounceOwnership',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
   {
     inputs: [{ internalType: 'address', name: '_avatar', type: 'address' }],
     name: 'setAvatar',

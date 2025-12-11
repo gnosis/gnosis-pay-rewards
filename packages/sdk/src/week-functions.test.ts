@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import utcPlugin from 'dayjs/plugin/utc.js';
 import { describe, expect, test } from '@jest/globals';
-import { getCurrentWeekId, toWeekId, findWeekId, isValidWeekId } from './week-functions';
+import { findWeekId, getCurrentWeekId, isValidWeekId, toWeekId } from './week-functions';
 
 dayjs.extend(utcPlugin);
 

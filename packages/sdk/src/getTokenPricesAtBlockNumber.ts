@@ -1,7 +1,8 @@
+import { SerializableErc20TokenType } from '@kpkpkg/apps-sdk/evm';
 import { Address, isAddressEqual, PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';
 import { getOraclePriceAtBlockNumber } from './oracle.js';
-import { circleUsdcToken, SerializableErc20TokenType, usdcBridgeToken } from './gnoisPayTokens.js';
+import { circleUsdcToken, GnoisPayTokenType, usdcBridgeToken } from './core/token-constants.js';
 import { ConditionalReturnType } from './utils/types.js';
 
 type TokenWithUsdPriceType = SerializableErc20TokenType & { price: number };
@@ -21,7 +22,7 @@ export async function getTokenPricesAtBlockNumber({
 }: {
   client: PublicClient<Transport, typeof gnosis>;
   blockNumber: bigint;
-  tokens: SerializableErc20TokenType[];
+  tokens: GnoisPayTokenType[];
 }): Promise<ConditionalReturnType<true, TokenWithUsdPriceType[], Error> | ConditionalReturnType<false, null, Error>> {
   try {
     const tokenWithUsdPrice = await Promise.all(
