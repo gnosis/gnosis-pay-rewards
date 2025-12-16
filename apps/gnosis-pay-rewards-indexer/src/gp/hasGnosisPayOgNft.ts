@@ -5,9 +5,11 @@ import { gnosis } from 'viem/chains';
 export async function hasGnosisPayOgNft(
   client: PublicClient<Transport, typeof gnosis>,
   userAddressArray: Address[],
+  blockNumber?: bigint,
 ): Promise<boolean[]> {
   const mcResult = await client.multicall({
     allowFailure: false,
+    blockNumber,
     contracts: userAddressArray.map((address) => ({
       abi: erc721Abi,
       address: gnosisPayOgNftAddress,
@@ -30,9 +32,11 @@ export async function hasGnosisPayOgNft(
 export async function hasGnosisPayOgNftV2(
   client: PublicClient<Transport, typeof gnosis>,
   safeAddresses: Address[],
+  blockNumber?: bigint,
 ): Promise<boolean[]> {
   const mcResult = await client.multicall({
     allowFailure: false,
+    blockNumber,
     contracts: safeAddresses.map((address) => ({
       abi: erc721Abi,
       address: gnosisPayOgNftV2Address,

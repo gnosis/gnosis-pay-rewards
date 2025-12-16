@@ -44,6 +44,13 @@ const envSchema = z
       .transform((val) => val.toLowerCase() === 'true')
       .default('false'),
     /**
+     * The start block number to index from
+     */
+    START_BLOCK: z
+      .string()
+      .transform((val) => BigInt(val))
+      .optional(),
+    /**
      * How many blocks to fetch at a time
      */
     FETCH_BLOCK_SIZE: z
@@ -97,6 +104,7 @@ export const {
   JSON_RPC_PROVIDER_GNOSIS,
   WEBSOCKET_JSON_RPC_PROVIDER_GNOSIS,
   RESUME_INDEXING,
+  START_BLOCK,
   FETCH_BLOCK_SIZE,
   GNOSIS_TOKEN_SNAPSHOT_BLOCK_INTERVAL,
   TOKEN_PRICE_SNAPSHOT_BLOCK_INTERVAL,

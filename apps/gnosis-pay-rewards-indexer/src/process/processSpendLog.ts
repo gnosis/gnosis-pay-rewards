@@ -77,8 +77,8 @@ export async function processSpendLog({
     });
 
     const safeHasOgNft = [
-      await hasGnosisPayOgNft(client, safeOwners),
-      await hasGnosisPayOgNftV2(client, [safeAddress]),
+      await hasGnosisPayOgNft(client, safeOwners, blockNumber),
+      await hasGnosisPayOgNftV2(client, [safeAddress], blockNumber),
     ].some((has) => has.some((addr) => addr === true));
 
     const gnosisPaySafeGnoTokenBalance = await getTokenBalanceOf({
@@ -185,8 +185,8 @@ export async function processRefundLog({
     });
 
     const safeHasOgNft = [
-      await hasGnosisPayOgNft(client, safeOwners),
-      await hasGnosisPayOgNftV2(client, [safeAddress]),
+      await hasGnosisPayOgNft(client, safeOwners, blockNumber),
+      await hasGnosisPayOgNftV2(client, [safeAddress], blockNumber),
     ].some((has) => has.some((addr) => addr === true));
 
     const gnosisPaySafeGnoTokenBalance = await getTokenBalanceOf({
@@ -263,7 +263,7 @@ async function validateLogIsNotAlreadyProcessed(
 ) {
   const savedLog = await gnosisPayTransactionModel.findOne({ _id: logId });
   if (savedLog !== null) {
-    throw new LogAlreadyProcessedError(`Log ${logId} already processed`);
+    throw new LogAlreadyProcessedError(`Log ${logId} `);
   }
 }
 

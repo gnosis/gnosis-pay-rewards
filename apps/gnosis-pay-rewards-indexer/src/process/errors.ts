@@ -6,3 +6,12 @@ export class LogAlreadyProcessedError extends Error {
     this.name = 'LogAlreadyProcessedError';
   }
 }
+
+export class NotGnosisPaySafeAddressError extends Error {
+  constructor(message: string) {
+    super(message, {
+      cause: 'NOT_GNOSIS_PAY_SAFE_ADDRESS',
+    });
+    this.name = 'NotGnosisPaySafeAddressError';
+  }
+}

@@ -58,7 +58,9 @@ export async function processGnosisTokenTransferLog({
     // If either the sender or receiver is a Gnosis Pay Safe,
     // take a snapshot of the Gnosis Pay Safe's balance
     if (!isSenderGnosisPaySafe && !isReceiverGnosisPaySafe) {
-      throw new Error('Neither sender nor receiver is a Gnosis Pay Safe');
+      throw new Error('Neither sender nor receiver is a Gnosis Pay Safe', {
+        cause: 'NOT_GNOSIS_PAY_SAFE_ADDRESS',
+      });
     }
 
     const safeAddress = (isSenderGnosisPaySafe ? sender : receiver).toLowerCase() as Address;

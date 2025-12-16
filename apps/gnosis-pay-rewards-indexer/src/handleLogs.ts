@@ -16,6 +16,16 @@ import { processGnosisTokenTransferLog } from './process/processGnosisTokenTrans
 import { processGnosisPayClaimOgNftLog } from './process/processGnosisPayClaimOgNftLog.js';
 
 import { buildSocketIoServer } from './server.js';
+import { withRetry } from './gp/commons.js';
+
+/**
+ * Safely stringify an object that may contain bigint values
+ */
+function safeStringify(obj: any): string {
+  return JSON.stringify(obj, (_, value) =>
+    typeof value === 'bigint' ? value.toString() : value,
+  );
+}
 
 export async function handleSpendLogs({
   logs,
@@ -31,11 +41,20 @@ export async function handleSpendLogs({
 }>) {
   for (const log of logs) {
     try {
-      const { data, error } = await processSpendLog({
-        client,
-        log,
-        mongooseModels,
-      });
+      const { data, error } = await withRetry(
+        () =>
+          processSpendLog({
+            client,
+            log,
+            mongooseModels,
+          }),
+        {
+          retries: 10,
+          name: `processSpendLog(${log.transactionHash})`,
+          verbose: true,
+          logger,
+        },
+      );
 
       if (error) throw error;
 
@@ -63,12 +82,24 @@ export async function handleRefundLogs({
   socketIoServer?: ReturnType<typeof buildSocketIoServer>;
 }>) {
   for (const log of logs) {
+    if(log.transactionHash === '0x0690a22551ad515fa741124ed83696d931e4de2e7de68eb051823cbbe5edb5d9' || log.transactionHash === '0xbd61ecaf54946bd8ec3a492fdbf89d0d3cc46228b15a9181c37c74f568794b6d') {
+      logger.info(`DEBUG: Handling refund log: ${log.transactionHash} ${safeStringify(log)}`);
+    }
     try {
-      const { data, error } = await processRefundLog({
-        client,
-        log,
-        mongooseModels,
-      });
+      const { data, error } = await withRetry(
+        () =>
+          processRefundLog({
+            client,
+            log,
+            mongooseModels,
+          }),
+        {
+          retries: 10,
+          name: `processRefundLog(${log.transactionHash})`,
+          verbose: true,
+          logger,
+        },
+      );
 
       if (error) throw error;
 
@@ -95,11 +126,20 @@ export async function handleGnosisTokenTransferLogs({
 >) {
   for (const log of logs) {
     try {
-      const { error } = await processGnosisTokenTransferLog({
-        client,
-        log,
-        mongooseModels,
-      });
+      const { error } = await withRetry(
+        () =>
+          processGnosisTokenTransferLog({
+            client,
+            log,
+            mongooseModels,
+          }),
+        {
+          retries: 10,
+          name: `processGnosisTokenTransferLog(${log.transactionHash})`,
+          verbose: true,
+          logger,
+        },
+      );
 
       if (error) throw error;
     } catch (e) {
@@ -120,11 +160,20 @@ export async function handleGnosisPayOgNftTransferLogs({
 >) {
   for (const log of logs) {
     try {
-      const { error } = await processGnosisPayClaimOgNftLog({
-        client,
-        log,
-        mongooseModels,
-      });
+      const { error } = await withRetry(
+        () =>
+          processGnosisPayClaimOgNftLog({
+            client,
+            log,
+            mongooseModels,
+          }),
+        {
+          retries: 10,
+          name: `processGnosisPayClaimOgNftLog(${log.transactionHash})`,
+          verbose: true,
+          logger,
+        },
+      );
 
       if (error) throw error;
     } catch (e) {
@@ -155,11 +204,20 @@ export async function handleGnosisPayRewardsDistributionLogs({
 
   for (const log of logs) {
     try {
-      const { error, data } = await processGnosisPayRewardDistributionLog({
-        log,
-        mongooseModels,
-        client,
-      });
+      const { error, data } = await withRetry(
+        () =>
+          processGnosisPayRewardDistributionLog({
+            log,
+            mongooseModels,
+            client,
+          }),
+        {
+          retries: 10,
+          name: `processGnosisPayRewardDistributionLog(${log.transactionHash})`,
+          verbose: true,
+          logger,
+        },
+      );
 
       if (error) throw error;
 
@@ -218,7 +276,7 @@ export async function handleGnosisPayRewardsDistributionLogs({
           notReceivedRewardsCount,
         },
       );
-    } catch (e) {}
+    } catch (e) { }
   }
 }
 
@@ -228,6 +286,14 @@ function handleError(
   logish: { eventName: string; transactionHash: string; blockNumber: bigint },
 ) {
   if (error.cause === 'INVALID_SENDER_OR_RECEIVER_ADDRESS') {
+    return;
+  }
+
+  if (error.cause === 'LOG_ALREADY_PROCESSED') {
+    return;
+  }
+
+  if(error.cause === 'NOT_GNOSIS_PAY_SAFE_ADDRESS') {
     return;
   }
 

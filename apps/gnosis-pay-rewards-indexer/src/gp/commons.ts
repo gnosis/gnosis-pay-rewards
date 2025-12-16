@@ -1,6 +1,7 @@
 import { PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';
 import { Logger } from 'winston';
+import retry from 'async-retry';
 
 /**
  * Common params for all GnosisPay getLogs functions
@@ -50,7 +51,7 @@ export const erc20TransferEventAbiItem = {
   inputs: [
     { indexed: true, internalType: 'address', name: 'from', type: 'address' },
     { indexed: true, internalType: 'address', name: 'to', type: 'address' },
-    { indexed: true, internalType: 'uint256', name: 'value', type: 'uint256' },
+    { indexed: false, internalType: 'uint256', name: 'value', type: 'uint256' },
   ],
 } as const;
 
@@ -71,3 +72,35 @@ export const erc721TransferEventAbiItem = {
     { indexed: true, name: 'tokenId', type: 'uint256' },
   ],
 } as const;
+
+/**
+ * Wraps an async function with retry logic for transient network errors
+ * @param fn - The async function to wrap
+ * @param options - Retry options
+ * @returns The wrapped function result
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    retries?: number;
+    name?: string;
+    verbose?: boolean;
+    logger?: Logger;
+  } = {},
+): Promise<T> {
+  const { retries = defaultRetries, name = 'operation', verbose = false, logger } = options;
+  
+  return retry(
+    async () => {
+      return await fn();
+    },
+    {
+      retries,
+      onRetry: (error: Error, attempt: number) => {
+        if (verbose) {
+          logger?.info(`${name}: failed on attempt ${attempt}`, { error: error.message });
+        }
+      },
+    },
+  );
+}
