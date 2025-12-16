@@ -1,3 +1,6 @@
+// Polyfill Node.js globals before any imports that might need them
+import './polyfill-node-globals.ts';
+
 import { gnosisChainArchiveClient as archiveClient, gnosisChainPublicClient as client } from './public-client.ts';
 import { startIndexer, StartIndexerParamsType, startIoServers } from './core.ts';
 import {

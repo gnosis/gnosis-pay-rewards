@@ -1,3 +1,6 @@
+// Polyfill Node.js globals before any imports that might need them
+import './polyfill-node-globals.ts';
+
 import { ENABLE_INDEXING, MONGODB_DEBUG, MONGODB_URI, RESUME_INDEXING } from './config/env.ts';
 import { gnosisPayTokens, tokenBalanceSnapshotTokens } from '@kpk/gnosis-pay-rewards-sdk';
 import { createConnection, createModels, saveTokensToDatabase } from '@kpk/gnosis-pay-rewards-sdk/mongoose';
@@ -32,7 +35,10 @@ function spawnProcess(options: SpawnProcessOptions) {
   // Format: deno run [flags] <script> [script-args]
   // When useAllowAll is true: deno run -A <script> [script-args]
   // When useAllowAll is false: deno run [permission-flags] <script> [script-args]
-  const commandArgs = useAllowAll ? ['run', '-A', entryPath, ...args] : ['run', ...args, entryPath];
+  // Note: Node.js globals are polyfilled via polyfill-node-globals.ts
+  const commandArgs = useAllowAll 
+    ? ['run', '-A', entryPath, ...args] 
+    : ['run', ...args, entryPath];
 
   const command = new Deno.Command(Deno.execPath(), {
     args: commandArgs,

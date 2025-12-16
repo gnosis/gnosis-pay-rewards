@@ -20,7 +20,6 @@ import type { RedisCache } from '../lib/redis-cache.ts';
 import type { GnosisChainPublicClient } from './types.ts';
 import type { TokenTransferLogType } from '../gp/getTokenTransferLogs.ts';
 import type { BlockInfoProvider } from '../lib/block-info-provider.ts';
-import { LogAlreadyProcessedError } from './errors.ts';
 import { getGnosisPaySafeOwners } from '../gp/getGnosisPaySafeOwners.ts';
 import { isGnosisPaySafeAddress } from '../gp/isGnosisPaySafeAddress.ts';
 import { isMetriSafe as isMetriSafeCore } from '../lib/metri/checkers.ts';
@@ -218,25 +217,20 @@ export async function processGnosisTokenTransferLog(
   }
 }
 
-async function validateLogIsNotAlreadyProcessed(
+async function checkIfTokenSnapshotExists(
   tokenBalanceSnapshotModel: TokenBalanceSnapshotModelType,
   blockNumber: bigint,
   safeAddress: Address,
   tokenAddress: Address,
-) {
+): Promise<TokenBalanceSnapshotFieldsType | null> {
   const docId = tokenBalanceSnapshotModel.createDocumentId(
     Number(blockNumber),
     safeAddress,
     tokenAddress,
   );
 
-  const document = await tokenBalanceSnapshotModel.findById(docId).select('transactionHash').lean();
-
-  if (document !== null) {
-    throw new LogAlreadyProcessedError(
-      `Token balance snapshot already processed: ${docId}. Transaction hash: ${document.transactionHash}`,
-    );
-  }
+  const document = await tokenBalanceSnapshotModel.findById(docId).lean();
+  return document as TokenBalanceSnapshotFieldsType | null;
 }
 
 type TakeGnosisTokenBalanceSnapshotDeps = {
@@ -277,12 +271,19 @@ export async function takeTokenBalanceSnapshot(
   }
 
   const tokenAddress = typeof token === 'string' ? token : token.address;
-  await validateLogIsNotAlreadyProcessed(
+  
+  // Check if snapshot already exists - if so, return it instead of creating a duplicate
+  const existingSnapshot = await checkIfTokenSnapshotExists(
     tokenBalanceSnapshotModel,
     blockNumber,
     address,
     tokenAddress as Address,
   );
+
+  if (existingSnapshot !== null) {
+    // Snapshot already exists, return it
+    return existingSnapshot;
+  }
 
   const block = await blockInfoProvider.getBlockInfo(Number(blockNumber));
 

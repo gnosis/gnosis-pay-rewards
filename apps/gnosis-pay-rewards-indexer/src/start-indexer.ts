@@ -1,3 +1,6 @@
+// Polyfill Node.js globals before any imports that might need them
+import './polyfill-node-globals.ts';
+
 import { createConnection, createModels } from '@kpk/gnosis-pay-rewards-sdk/mongoose';
 import type { PublicClient, Transport } from 'viem';
 import { gnosis } from 'viem/chains';

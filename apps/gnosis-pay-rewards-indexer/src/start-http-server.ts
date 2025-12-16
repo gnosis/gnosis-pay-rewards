@@ -1,3 +1,6 @@
+// Polyfill Node.js globals before any imports that might need them
+import './polyfill-node-globals.ts';
+
 import type { IndexerStateType } from '@kpk/gnosis-pay-rewards-sdk';
 import { gnosisChainPublicClient as client } from './public-client.ts';
 import { startIoServers } from './core.ts';

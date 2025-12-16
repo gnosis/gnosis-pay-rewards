@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Address, getAddress } from 'viem';
+import { retry } from '../retry.ts';
 
 const ENVIO_API_URL = 'https://gnosis-e702590.dedicated.hyperindex.xyz/v1/graphql';
 
@@ -232,17 +233,38 @@ export async function isMetriSafe(address: Address): Promise<boolean> {
       }
     `;
 
-    const response = await axios.post(
-      ENVIO_API_URL,
-      {
-        query,
-        variables: {
-          address: checksumAddress,
-        },
+    // Add timeout and retry logic for the HTTP request
+    // This handles network issues, timeouts, and canceled operations gracefully
+    const response = await retry(
+      async () => {
+        return await axios.post(
+          ENVIO_API_URL,
+          {
+            query,
+            variables: {
+              address: checksumAddress,
+            },
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            timeout: 10000, // 10 second timeout
+          },
+        );
       },
       {
-        headers: {
-          'Content-Type': 'application/json',
+        retries: 3,
+        minTimeout: 500, // Start with 500ms
+        maxTimeout: 2000, // Max 2 seconds between retries
+        onRetry: (error, attempt) => {
+          // Only log retries for non-cancellation errors
+          if (!error.message.includes('canceled') && !error.message.includes('operation was canceled')) {
+            console.warn(
+              `Retrying Metri safe check for ${checksumAddress} (attempt ${attempt}):`,
+              error.message,
+            );
+          }
         },
       },
     );
@@ -260,6 +282,18 @@ export async function isMetriSafe(address: Address): Promise<boolean> {
 
     return avatarType === 'RegisterHuman' || avatarType === 'Unknown';
   } catch (error) {
+    // Handle cancellation errors silently (they're usually due to process termination)
+    const isCanceled = error instanceof Error && (
+      error.message.includes('canceled') ||
+      error.message.includes('operation was canceled') ||
+      (axios.isAxiosError(error) && error.code === 'ECONNABORTED')
+    );
+
+    if (isCanceled) {
+      // Return false for canceled operations (process might be shutting down)
+      return false;
+    }
+
     if (axios.isAxiosError(error)) {
       console.error(
         `Error checking if safe ${checksumAddress} is a Metri safe:`,

@@ -350,20 +350,29 @@ export async function createSafeWeekRewardsSnapshotDocument(
 ): Promise<SafeWeekRewardsSnapshotDocumentType> {
   const address = payload.address.toLowerCase() as Address;
   const documentId = model.createDocumentId(payload.week, address);
-  const document = await model.findById(documentId, {}, { session });
-
-  if (document === null) {
-    return (await new model<SafeWeekRewardsSnapshotDocumentFieldsType>({
-      _id: documentId,
-      safe: address,
-      week: payload.week,
-      netVolumeUSD: 0,
-      estimatedRewards: [],
-      earnedRewards: [],
-      transactions: [],
-      tokenBalanceSnapshots: [],
-    }).save({ session })) as SafeWeekRewardsSnapshotDocumentType;
-  }
+  
+  // Use findOneAndUpdate with upsert to handle race conditions atomically
+  // This prevents duplicate key errors when multiple processes try to create the same document
+  const document = await model.findOneAndUpdate(
+    { _id: documentId },
+    {
+      $setOnInsert: {
+        _id: documentId,
+        safe: address,
+        week: payload.week,
+        netVolumeUSD: 0,
+        estimatedRewards: [],
+        earnedRewards: [],
+        transactions: [],
+        tokenBalanceSnapshots: [],
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+      session,
+    },
+  );
 
   return document as SafeWeekRewardsSnapshotDocumentType;
 }
