@@ -26,7 +26,7 @@ Base URL: `http://<vm-address>:3002`
 ### `GET /week-snapshots`
 - **Description:** Get all week snapshots for a specific week
 - **Required Parameters:**
-  - `week` (string): Week ID (e.g., "2025-W46")
+  - `week` (string): Week ID (e.g., "2025-12-14")
 - **Response:** Array of week snapshots with safe, transactions, and token balances
 
 ### `GET /weeks`
